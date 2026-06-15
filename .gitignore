@@ -30,3 +30,15 @@ scratch/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Python build artifacts
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# C++ Build artifacts
+backend/src/addon/build/
+build/
+Release/
+Debug/
