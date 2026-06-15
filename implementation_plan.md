@@ -1,4 +1,44 @@
-# AI Job Scraper App — Implementation Plan (v5 — Final)
+# AI Job Scraper App — Implementation Plan (v6 — Hybrid Architecture Migration)
+
+## Phase 2: Hybrid Python & C++ Architecture
+
+We are migrating the heavy computational and NLP workloads from Node.js to specialized Python and C++ modules to optimize performance, leverage standard Python libraries, and execute similarity matches at native CPU speeds.
+
+### User Review Required
+> [!IMPORTANT]
+> - **Python Requirement**: The user must have Python 3.10+ installed on their Windows PC and available in their system path (`python` command).
+> - **C++ Compiler**: A pre-compiled `.node` binary will be provided for Windows x64. If recompiling is needed, the user must have MSVC Build Tools (`node-gyp` environment) set up.
+
+### Proposed Changes
+
+#### [NEW] [FastAPI Embeddings Service](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/app.py)
+* Creates a Python FastAPI server running locally at `http://localhost:8000`.
+* Loads the `sentence-transformers/all-MiniLM-L6-v2` model into memory on startup (using PyTorch).
+* Exposes a `/embed` POST endpoint: accepts text, parses PDF text using `pypdf`, and returns the 384-dimensional floating point vector.
+
+#### [NEW] [C++ Cosine Similarity Node Addon](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/addon/similarity.cpp)
+* Creates a native C++ addon using Node-API (`node-addon-api`).
+* Implements the cosine similarity calculation using SIMD (Single Instruction Multiple Data) registers for high-performance array calculations.
+* Exposes `calculateCosineSimilarity(vectorA, vectorB)` to JavaScript.
+
+#### [MODIFY] [embeddingService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/embeddingService.js)
+* Redirects calls from the local `@xenova/transformers` library to the local Python FastAPI endpoint (`http://localhost:8000/embed`).
+
+#### [MODIFY] [matchService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/matchService.js)
+* Replaces the pure-JavaScript cosine similarity calculation with calls to our compiled C++ Node-API addon.
+
+#### [MODIFY] [setup.bat](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/setup.bat)
+* Updates the installation workflow:
+  1. Installs Node.js dependencies (`npm install`).
+  2. Creates a Python virtual environment (`python -m venv venv_nlp`) inside `nlp_service`.
+  3. Installs Python dependencies (`pip install fastapi uvicorn sentence-transformers pypdf`).
+  4. Runs `npm run build-addon` to configure and compile the C++ addon.
+
+### Verification Plan
+* **Python Service Test**: Request a sample vector from the FastAPI endpoint and verify it returns a 384-length float array.
+* **C++ Math Test**: Compare similarity scores between JS math and C++ math to ensure identical matching accuracy.
+
+---
 
 ## Overview
 

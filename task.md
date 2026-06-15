@@ -44,3 +44,12 @@
 - [x] backend/setup.bat
 - [x] backend/README.md
 - [x] backend/package.json scripts
+
+## Phase 8: Hybrid Python & C++ Migration
+- [x] Create Python FastAPI service (`backend/nlp_service/app.py` and `requirements.txt`)
+- [x] Create C++ Node-API native addon (`backend/src/addon/similarity.cpp` and `binding.gyp`)
+- [x] Integrate Python FastAPI in `embeddingService.js`
+- [x] Integrate C++ native addon in `matchService.js`
+- [x] Update `setup.bat` to configure Python venv and C++ addon
+- [x] Verify hybrid setup via automated test runs
+

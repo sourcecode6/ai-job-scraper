@@ -4,6 +4,25 @@ const emailService = require('./emailService');
 const settings = require('../config/settings');
 const logger = require('../logger');
 
+let similarityAddon = null;
+try {
+  similarityAddon = require('../addon/build/Release/similarity.node');
+  logger.info('Successfully loaded C++ similarity native addon.');
+} catch (e) {
+  logger.warn('C++ similarity addon not loaded. Dynamic fallback to pure JavaScript implementation active.');
+}
+
+function computeSimilarity(vecA, vecB) {
+  if (similarityAddon) {
+    try {
+      return similarityAddon.calculateCosineSimilarity(vecA, vecB);
+    } catch (err) {
+      return cosineSimilarity(vecA, vecB);
+    }
+  }
+  return cosineSimilarity(vecA, vecB);
+}
+
 function isJobWithinRetention(job, retentionDays) {
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
   
@@ -128,12 +147,12 @@ async function matchForUser(userOrEmail) {
     if (job.title_vector && job.description_vector) {
       const titleVec = JSON.parse(job.title_vector);
       const descVec = JSON.parse(job.description_vector);
-      const titleScore = cosineSimilarity(resumeVector, titleVec) * 100;
-      const descScore = cosineSimilarity(resumeVector, descVec) * 100;
+      const titleScore = computeSimilarity(resumeVector, titleVec) * 100;
+      const descScore = computeSimilarity(resumeVector, descVec) * 100;
       score = (titleScore * 0.5) + (descScore * 0.5);
     } else {
       const jobVector = JSON.parse(job.embedding_vector);
-      score = cosineSimilarity(resumeVector, jobVector) * 100;
+      score = computeSimilarity(resumeVector, jobVector) * 100;
     }
 
     if (score >= threshold) {

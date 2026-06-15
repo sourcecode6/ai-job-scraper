@@ -1,5 +1,10 @@
 # Dependency directories
 backend/node_modules/
+backend/nlp_service/venv_nlp/
+venv_nlp/
+venv/
+.venv/
+ENV/
 
 # Environment files (contains credentials)
 backend/.env

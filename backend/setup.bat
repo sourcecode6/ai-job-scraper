@@ -39,6 +39,37 @@ echo  [2/6] Installing Playwright Chromium browser...
 call npx playwright install chromium
 echo  [OK] Playwright Chromium ready
 
+:: Setup C++ native addon and Python FastAPI
+echo.
+echo  [2.5/6] Setting up Hybrid Python & C++ components...
+
+:: Check Python
+where python >nul 2>&1
+if %errorlevel% neq 0 (
+    echo  [WARNING] Python is not installed or not in PATH.
+    echo  The NLP service will fallback to local Node.js transformers.
+) else (
+    echo  [OK] Python found
+    echo  Setting up Python virtual environment...
+    if not exist "nlp_service\venv_nlp" (
+        call python -m venv nlp_service\venv_nlp
+    )
+    echo  Installing Python requirements...
+    call .\nlp_service\venv_nlp\Scripts\pip.exe install -r .\nlp_service\requirements.txt
+    echo  [OK] Python virtual environment ready
+)
+
+:: Attempt C++ native addon compilation
+echo.
+echo  Attempting to compile C++ native addon...
+call npm run build-addon
+if %errorlevel% neq 0 (
+    echo  [WARNING] C++ compilation failed (Visual Studio Build Tools missing).
+    echo  The similarity matching will fallback to pure JavaScript.
+) else (
+    echo  [OK] C++ native addon compiled successfully!
+)
+
 :: Create .env if not exists
 echo.
 echo  [3/6] Setting up environment file...
@@ -70,19 +101,7 @@ if not exist "logs"    mkdir logs
 if not exist "uploads" mkdir uploads
 echo  [OK] Directories ready
 
-:: Check if HF_API_KEY in .env is still the default placeholder
-findstr /C:"HF_API_KEY=your_hf_token_here" .env >nul 2>&1
-if %errorlevel% equ 0 (
-    echo.
-    echo  ┌─────────────────────────────────────────────────┐
-    echo  │  WARNING: HF_API_KEY is not set in backend\.env   │
-    echo  │  The HuggingFace API key is required to avoid    │
-    echo  │  rate-limiting and 401 unauthorized responses.   │
-    echo  │  Please add a free Read token from:              │
-    echo  │  https://huggingface.co/settings/tokens          │
-    echo  └─────────────────────────────────────────────────┘
-    echo.
-)
+
 
 :: Import resume automatically from workspace root
 echo.

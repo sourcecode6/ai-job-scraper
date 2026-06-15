@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const logger = require('./logger');
 const { init: initDb } = require('./config/db');
+const { startPythonService } = require('./services/pythonService');
 const { initScheduler } = require('./schedulers');
 
 const app = express();
@@ -46,6 +47,9 @@ async function start() {
   try {
     // 1. Initialize database
     initDb();
+
+    // 1.5. Start local Python FastAPI NLP service
+    startPythonService();
 
     // 2. Start Express server
     app.listen(PORT, () => {
