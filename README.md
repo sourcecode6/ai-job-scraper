@@ -31,10 +31,10 @@ npm start
 | `EMAIL_USER` | Your Gmail address |
 | `EMAIL_PASS` | Gmail App Password ([get one here](https://myaccount.google.com/apppasswords)) |
 | `NOTIFY_EMAIL` | Where to send job digests (usually same as above) |
-| `HF_API_KEY` | HuggingFace token (Required — free Read token from huggingface.co) |
-| `MATCH_THRESHOLD` | Min match % to notify (default: 65) |
+| `MATCH_THRESHOLD` | Min match % to notify (default: 30) |
 | `DATA_RETENTION_DAYS` | Days to keep job data (default: 3) |
 | `SCRAPE_INTERVAL_HOURS` | How often to scrape (default: 6) |
+| `USER_YOE` | Your Years of Experience (default: 4) |
 
 ---
 
@@ -56,7 +56,7 @@ curl -X POST http://localhost:3000/api/users \
   -d '{
     "email": "you@gmail.com",
     "selectedCompanies": ["NVIDIA", "Google", "Intel", "Microsoft"],
-    "matchThreshold": 65
+    "matchThreshold": 30
   }'
 ```
 
@@ -97,11 +97,11 @@ curl -X POST "http://localhost:3000/api/admin/activate?company=NVIDIA"
 | Company | ATS / Method | Location Filter | Expected Jobs |
 |---|---|---|---|
 | NVIDIA | Workday JSON POST | India + Remote | ~40 |
-| Google | Playwright (SPA) | India / Engineering | *(selector pending fix)* |
+| Google | Playwright (SPA) | India / Engineering | ~10-20 |
 | Arista Networks | SmartRecruiters REST API | India | ~33 |
 | Cisco Systems | Phenom People widgets API | India | ~150 |
 | Qualcomm | Eightfold AI pcsx API | India | ~414 |
-| AMD | Workday JSON POST | India + Remote | ~40 |
+| AMD | iCIMS/Attract GET API | India | ~225 |
 | Broadcom | Workday JSON POST | India + Remote | ~60 |
 | Intel | Workday JSON POST | India + Remote | ~40 |
 | Microsoft | Eightfold AI pcsx API | India | ~200 |
@@ -113,15 +113,15 @@ curl -X POST "http://localhost:3000/api/admin/activate?company=NVIDIA"
 ## How It Works
 
 ```
-Startup → Scrape all companies → Get job embeddings (HuggingFace)
+Startup → Scrape all companies → Local Job Embeddings (offline model)
        → Compare against your resume vector (cosine similarity)
-       → Email matches ≥ 65% → Repeat every 6 hours
+       → Email matches ≥ threshold % → Repeat every 6 hours
 ```
 
-1. **Scraping**: Uses official ATS APIs where available, falls back to JSON-LD structured data
-2. **Matching**: Your resume is converted to a 384-dim semantic vector once on upload. Each job gets its own vector at scrape time. Matching is pure math — no API calls
-3. **Email**: Sent via Gmail SMTP. If it fails, the match is retried next cycle
-4. **Storage**: Single SQLite file at `backend/data/jobs.db`. Jobs expire after 3 days automatically
+1. **Scraping**: Uses official ATS APIs where available, falls back to JSON-LD structured data or clean widget POST requests.
+2. **Local AI Matching**: Your resume is converted to a 384-dimensional semantic vector once on upload. Each job gets its own vector at scrape time using a local, offline `@xenova/transformers` `all-MiniLM-L6-v2` model. Matching is pure in-memory math with no external API calls or rate limits.
+3. **Email**: Sent via Gmail SMTP. If it fails, the matches are retried on the next cycle.
+4. **Storage**: Single SQLite file at `backend/data/jobs.db` using Node's native `node:sqlite`. Jobs and matches expire after 3 days automatically.
 
 ---
 
@@ -144,10 +144,6 @@ Startup → Scrape all companies → Get job embeddings (HuggingFace)
 **No jobs found?**
 - Check `logs/scrape.log` for per-company errors
 - Some companies may be marked `degraded` — use `/api/admin/activate`
-
-**HuggingFace slow?**
-- Free tier models "sleep" — first call may take 30s. Normal after warmup.
-- Add a free HuggingFace token to `.env` as `HF_API_KEY` (required for API access)
 
 **Resume skills seem wrong?**
 - Re-upload with a cleaner PDF (avoid image-only/scanned resumes)
