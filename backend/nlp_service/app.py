@@ -52,7 +52,9 @@ async def get_embedding(payload: TextPayload):
         if norm > 0:
             avg_embedding = avg_embedding / norm
             
-        return {"embedding": avg_embedding.tolist()}
+        from scraper import extract_skills
+        skills = extract_skills(text)
+        return {"embedding": avg_embedding.tolist(), "skills": skills}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

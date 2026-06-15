@@ -107,28 +107,36 @@ function cosineSimilarity(vecA, vecB) {
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
-/**
- * Gets or creates the embedding vector for a resume text.
- * Updates the user record in DB.
- *
- * @param {string} email
- * @param {string} resumeText
- * @returns {number[]|null}
- */
 async function embedResume(email, resumeText) {
   const startTime = Date.now();
-  const vector = await getEmbedding(resumeText);
+  let vector = null;
+  let skills = [];
 
-  logger.info('Resume embedding', {
+  try {
+    const response = await axios.post('http://127.0.0.1:8000/embed', { text: resumeText }, { timeout: 15000 });
+    vector = response.data?.embedding || null;
+    skills = response.data?.skills || [];
+  } catch (err) {
+    logger.warn('Python local embedding service call failed for resume, falling back to local JS extractor and local skills extraction', { message: err.message });
+    vector = await getEmbedding(resumeText);
+    try {
+      const nlpService = require('./nlpService');
+      skills = nlpService.extractSkills(resumeText);
+    } catch (e) {
+      skills = [];
+    }
+  }
+
+  logger.info('Resume embedding and skills extraction complete', {
     logType: 'nlp',
     event: 'resume_upload',
     email,
     vectorDimensions: vector?.length || 0,
-    huggingFaceStatus: vector ? 'success' : 'failed',
+    skillsCount: skills.length,
     durationMs: Date.now() - startTime,
   });
 
-  return vector;
+  return { vector, skills };
 }
 
 module.exports = { getEmbedding, cosineSimilarity, embedResume };

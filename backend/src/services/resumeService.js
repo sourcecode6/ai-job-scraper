@@ -2,7 +2,6 @@ const pdfParse = require('pdf-parse');
 const fs = require('fs');
 const { db } = require('../config/db');
 const embeddingService = require('./embeddingService');
-const nlpService = require('./nlpService');
 const logger = require('../logger');
 
 /**
@@ -37,11 +36,8 @@ async function processResume(email, pdfFilePath) {
     throw new Error('Could not extract text from PDF. Ensure the PDF is not image-only/scanned.');
   }
 
-  // 2. Extract display skills
-  const resumeSkills = nlpService.extractSkills(resumeText);
-
-  // 3. Get semantic embedding
-  const vector = await embeddingService.embedResume(email, resumeText);
+  // 2. Get semantic embedding and display skills
+  const { vector, skills: resumeSkills } = await embeddingService.embedResume(email, resumeText);
 
   logger.info('Resume processed', {
     logType: 'nlp',
