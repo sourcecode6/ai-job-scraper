@@ -1,4 +1,31 @@
-# AI Job Scraper App — Implementation Plan (v6 — Hybrid Architecture Migration)
+# AI Job Scraper App — Implementation Plan (v7 — Python Scraping Migration)
+
+## Phase 3: Python Scraping Service Migration
+
+We are migrating all 11 scraping adapters, the global request queue, the robots.txt checker, and the scraper cron scheduling logic from Node.js to Python. This reduces JavaScript's footprint to ~25% of the codebase, leaving it responsible only for Express API endpoints, Nodemailer email digests, and triggering C++ matches.
+
+### Proposed Changes
+
+#### [NEW] [Python Scraper Service](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/scraper_service/orchestrator.py)
+* Creates a standalone Python service under `backend/scraper_service`.
+* Includes the following modules:
+  - `orchestrator.py`: Orchestrates the scraping loop, reads active companies from `jobs.db`, respects the global rate limit (3s request gap, 10s company gap), and writes jobs directly to `jobs.db`.
+  - `robots.py`: Compliant robots.txt parser and checker.
+  - `adapters/`: Individual scraper modules for NVIDIA, Google, Arista, Cisco, Qualcomm, AMD, Broadcom, Intel, Microsoft, IBM, and Ericsson.
+* Uses `requests` for Tier 2 APIs and `playwright-python` for Tier 3 fallbacks (Google).
+* Loop schedule: Runs immediately on startup and every 6 hours.
+
+#### [DELETE] [Node.js Scraping Code](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/acquisition/)
+* Deletes the Node.js scraping adapters (`workday.js`, `cisco.js`, `eightfold.js`, `ibm.js`, `smartrecruiters.js`, `jsonld.js`, `playwright.js`, `robotsChecker.js`, `requestQueue.js`, `index.js`).
+
+#### [MODIFY] [app.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/app.js) & [pythonService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/pythonService.js)
+* Updates Node.js process manager to automatically spawn the Python Scraper orchestrator in the background on startup, alongside the FastAPI embedding service.
+* Node.js remains the host of the Express endpoints, Nodemailer email rendering/delivery, and the C++ vector math match loop.
+
+#### [MODIFY] [setup.bat](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/setup.bat)
+* Updates Python virtual environment setup to install new Python scraping libraries (`requests`, `beautifulsoup4`, `playwright`).
+
+---
 
 ## Phase 2: Hybrid Python & C++ Architecture
 

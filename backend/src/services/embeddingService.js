@@ -2,7 +2,6 @@ const { pipeline } = require('@xenova/transformers');
 const axios = require('axios');
 const { db } = require('../config/db');
 const logger = require('../logger');
-const { queueEmbedding } = require('../acquisition/requestQueue');
 
 let extractorPromise = null;
 
@@ -109,43 +108,6 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 /**
- * Queues an embedding call for a job (rate-limited via embeddingQueue).
- */
-function queueJobEmbedding(jobId, companyName) {
-  queueEmbedding(async () => {
-    const job = db.prepare(
-      'SELECT job_id, company_name, job_title, department, job_description FROM jobs WHERE job_id = ? AND company_name = ?'
-    ).get(jobId, companyName);
-
-    if (!job) return;
-
-    const titleVector = await getEmbedding(job.job_title);
-    const descVector = await getEmbedding(`${job.job_title} ${job.department} ${job.job_description}`);
-
-    if (titleVector && descVector) {
-      db.prepare(`
-        UPDATE jobs
-        SET title_vector = ?, description_vector = ?, embedding_vector = ?, embedding_status = 'done'
-        WHERE job_id = ? AND company_name = ?
-      `).run(JSON.stringify(titleVector), JSON.stringify(descVector), JSON.stringify(descVector), jobId, companyName);
-
-      logger.info('Job embeddings stored', {
-        logType: 'nlp',
-        event: 'job_embedding',
-        jobId,
-        company: companyName,
-        titleVectorDimensions: titleVector.length,
-        descVectorDimensions: descVector.length,
-      });
-    } else {
-      db.prepare(
-        "UPDATE jobs SET embedding_status = 'failed' WHERE job_id = ? AND company_name = ?"
-      ).run(jobId, companyName);
-    }
-  });
-}
-
-/**
  * Gets or creates the embedding vector for a resume text.
  * Updates the user record in DB.
  *
@@ -169,4 +131,4 @@ async function embedResume(email, resumeText) {
   return vector;
 }
 
-module.exports = { getEmbedding, cosineSimilarity, queueJobEmbedding, embedResume };
+module.exports = { getEmbedding, cosineSimilarity, embedResume };

@@ -33,11 +33,7 @@ if %errorlevel% neq 0 (
 )
 echo  [OK] Dependencies installed
 
-:: Install Playwright browsers (Chromium only)
-echo.
-echo  [2/6] Installing Playwright Chromium browser...
-call npx playwright install chromium
-echo  [OK] Playwright Chromium ready
+:: Playwright installation skipped (Python scraper does not require Playwright)
 
 :: Setup C++ native addon and Python FastAPI
 echo.

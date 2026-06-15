@@ -18,7 +18,6 @@ module.exports = {
     globalRequestDelayMs: 3000,     // 1 req per 3s globally
     betweenCompaniesDelayMs: 10000, // 10s gap between companies
     crawlDelayDefaultMs: 5000,      // default if no Crawl-delay in robots.txt
-    playwrightSlowMo: 200,
     userAgent: 'AIJobScraperBot/1.0 (Personal use job tracker; not for commercial use)',
   },
 };
