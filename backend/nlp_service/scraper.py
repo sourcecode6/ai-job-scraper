@@ -8,6 +8,8 @@ import urllib.robotparser
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
+from logger import log_scrape_info, log_scrape_error, log_nlp_event
+
 
 # Global user agent
 USER_AGENT = 'AIJobScraperBot/1.0 (Personal use job tracker; not for commercial use)'
@@ -133,6 +135,81 @@ def extract_yoe(text):
     return None
 
 # Robots.txt helpers
+class RobotsTxtParser:
+    def __init__(self, content):
+        self.rules = {}
+        self.crawl_delays = {}
+        self.parse(content)
+
+    def parse(self, content):
+        current_agents = []
+        for line in content.splitlines():
+            line = line.split('#', 1)[0].strip()
+            if not line:
+                continue
+            parts = line.split(':', 1)
+            if len(parts) != 2:
+                continue
+            key = parts[0].strip().lower()
+            val = parts[1].strip()
+            if key == 'user-agent':
+                agent = val.lower()
+                current_agents.append(agent)
+                if agent not in self.rules:
+                    self.rules[agent] = []
+            elif key in ('allow', 'disallow'):
+                for agent in current_agents:
+                    self.rules[agent].append((key == 'allow', val))
+            elif key == 'crawl-delay':
+                try:
+                    delay = float(val)
+                    for agent in current_agents:
+                        self.crawl_delays[agent] = delay
+                except ValueError:
+                    pass
+
+    def is_allowed(self, user_agent, url):
+        parsed = urllib.parse.urlparse(url)
+        path = parsed.path
+        if not path:
+            path = '/'
+        if parsed.query:
+            path += '?' + parsed.query
+        
+        user_agent = user_agent.lower()
+        agent_to_use = next((a for a in self.rules if a != '*' and a in user_agent), '*' if '*' in self.rules else None)
+        if not agent_to_use:
+            return True
+
+        matching_rules = []
+        for is_allow, pattern in self.rules[agent_to_use]:
+            regex_parts = []
+            for char in pattern:
+                if char == '*':
+                    regex_parts.append('.*')
+                elif char == '$':
+                    regex_parts.append('$')
+                else:
+                    regex_parts.append(re.escape(char))
+            regex_str = '^' + ''.join(regex_parts)
+            if not pattern.endswith('$'):
+                regex_str += '.*'
+            if re.match(regex_str, path):
+                matching_rules.append((is_allow, pattern))
+
+        if not matching_rules:
+            return True
+
+        matching_rules.sort(key=lambda x: (len(x[1]), x[0]), reverse=True)
+        return matching_rules[0][0]
+
+    def get_crawl_delay(self, user_agent):
+        user_agent = user_agent.lower()
+        for agent in self.crawl_delays:
+            if agent != '*' and agent in user_agent:
+                return self.crawl_delays[agent]
+        return self.crawl_delays.get('*')
+
 def fetch_robots(career_url):
     try:
         parsed_url = urllib.parse.urlparse(career_url)
@@ -141,35 +218,64 @@ def fetch_robots(career_url):
         if robots_url in ROBOTS_CACHE:
             return ROBOTS_CACHE[robots_url]
 
-        rp = urllib.robotparser.RobotFileParser()
-        rp.set_url(robots_url)
-        # Add headers to avoid potential 403 on robots.txt fetches
         req = urllib.request.Request(robots_url, headers={'User-Agent': USER_AGENT})
         with urllib.request.urlopen(req, timeout=8) as response:
-            rp.parse(response.read().decode('utf-8', errors='ignore').splitlines())
-        ROBOTS_CACHE[robots_url] = rp
-        return rp
+            content = response.read().decode('utf-8', errors='ignore')
+        
+        parser = RobotsTxtParser(content)
+        ROBOTS_CACHE[robots_url] = parser
+        return parser
     except Exception:
-        # Fallback to None if robots.txt cannot be fetched/parsed
         return None
 
-def is_allowed(career_url):
-    rp = fetch_robots(career_url)
+def is_allowed(target_url):
+    rp = fetch_robots(target_url)
     if not rp:
         return True
-    return rp.can_fetch(USER_AGENT, career_url)
+    return rp.is_allowed(USER_AGENT, target_url)
 
 def get_crawl_delay_ms(career_url, default_delay):
     rp = fetch_robots(career_url)
     if not rp:
         return default_delay
-    try:
-        delay = rp.crawl_delay(USER_AGENT) or rp.crawl_delay('*')
-        if delay:
-            return int(delay * 1000)
-    except Exception:
-        pass
+    delay = rp.get_crawl_delay(USER_AGENT)
+    if delay is not None:
+        return int(delay * 1000)
     return default_delay
+    return default_delay
+
+COMPANY_CONFIGS = {
+    'NVIDIA': {
+        'workdayTenant': 'nvidia',
+        'workdaySite': 'NVIDIAExternalCareerSite',
+        'workdaySubdomain': 'nvidia.wd5',
+    },
+    'Arista Networks': {
+        'smartRecruitersId': 'AristaNetworks',
+    },
+    'Qualcomm': {
+        'eightfoldBaseUrl': 'https://careers.qualcomm.com',
+        'eightfoldDomain': 'qualcomm.com',
+    },
+    'Broadcom': {
+        'workdayTenant': 'broadcom',
+        'workdaySite': 'External_Career',
+        'workdaySubdomain': 'broadcom.wd1',
+    },
+    'Intel': {
+        'workdayTenant': 'intel',
+        'workdaySite': 'External',
+        'workdaySubdomain': 'intel.wd1',
+    },
+    'Microsoft': {
+        'eightfoldBaseUrl': 'https://apply.careers.microsoft.com',
+        'eightfoldDomain': 'microsoft.com',
+    },
+    'Ericsson': {
+        'eightfoldBaseUrl': 'https://jobs.ericsson.com',
+        'eightfoldDomain': 'ericsson.com',
+    }
+}
 
 # Custom HTTP rate-limited queue simulation
 GLOBAL_LAST_REQUEST_TIME = 0.0
@@ -651,37 +757,64 @@ def parse_relative_date(date_str, retention_days):
 
 def scrape_company(company_row, model):
     start_time = time.time()
-    name = company_row['name']
-    ats = company_row['ats']
-    tier = company_row['tier']
-    career_url = company_row['career_url']
-    filters = json.loads(company_row['filters'] or '{}')
+    company = dict(company_row)
+    name = company['name']
+    if name in COMPANY_CONFIGS:
+        company.update(COMPANY_CONFIGS[name])
 
-    print(f"[{name}] Starting acquisition (ats={ats}, tier={tier})")
+    ats = company['ats']
+    tier = company['tier']
+    career_url = company['career_url']
+    filters = json.loads(company['filters'] or '{}')
+
+    if name == 'Arista Networks':
+        allow_bypass = os.environ.get('ALLOW_ARISTA_BYPASS', 'false').lower() in ('true', '1', 'yes')
+        if not allow_bypass:
+            log_scrape_info(f"[{name}] Blocked by robots.txt — skipping (ALLOW_ARISTA_BYPASS is false)")
+            return
+
+    log_scrape_info(f"[{name}] Starting acquisition (ats={ats}, tier={tier})")
+
+    # Determine the target endpoint URL to check against robots.txt
+    target_url = career_url
+    if ats == 'eightfold':
+        target_url = f"{company['eightfoldBaseUrl']}/api/pcsx/search"
+    elif ats == 'smartrecruiters':
+        target_url = f"https://api.smartrecruiters.com/v1/companies/{company['smartRecruitersId']}/postings"
+    elif ats == 'cisco':
+        target_url = "https://careers.cisco.com/widgets"
+    elif ats == 'amd':
+        target_url = "https://careers.amd.com/api/jobs"
+    elif ats == 'ibm':
+        target_url = "https://www-api.ibm.com/search/api/v2"
 
     # Check robots.txt compliance
     if tier >= 2 and ats != 'workday':
-        if not is_allowed(career_url):
-            print(f"[{name}] Blocked by robots.txt — skipping")
-            return
+        is_arista = (name == 'Arista Networks')
+        allow_bypass = os.environ.get('ALLOW_ARISTA_BYPASS', 'false').lower() in ('true', '1', 'yes')
+        
+        if not (is_arista and allow_bypass):
+            if not is_allowed(target_url):
+                log_scrape_error(f"[{name}] Blocked by robots.txt — skipping (target_url={target_url})")
+                return
 
     try:
         raw_jobs = []
         if ats == 'workday':
-            raw_jobs = scrape_workday(company_row, filters)
+            raw_jobs = scrape_workday(company, filters)
         elif ats == 'smartrecruiters':
-            raw_jobs = scrape_smartrecruiters(company_row, filters)
+            raw_jobs = scrape_smartrecruiters(company, filters)
         elif ats == 'cisco':
-            raw_jobs = scrape_cisco(company_row, filters)
+            raw_jobs = scrape_cisco(company, filters)
         elif ats == 'eightfold':
-            raw_jobs = scrape_eightfold(company_row, filters)
+            raw_jobs = scrape_eightfold(company, filters)
         elif ats == 'amd':
-            raw_jobs = scrape_amd(company_row, filters)
+            raw_jobs = scrape_amd(company, filters)
         elif ats == 'ibm':
-            raw_jobs = scrape_ibm(company_row, filters)
+            raw_jobs = scrape_ibm(company, filters)
         else:
             # Fallback (Google is commented out, so we don't expect other types)
-            print(f"[{name}] ATS type {ats} not fully implemented in python. Skipping.")
+            log_scrape_error(f"[{name}] ATS type {ats} not fully implemented in python. Skipping.")
             return
 
         new_count = 0
@@ -690,7 +823,7 @@ def scrape_company(company_row, model):
         retention = settings['dataRetentionDays']
 
         db_path = get_db_path()
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=30.0)
         cursor = conn.cursor()
 
         for job in raw_jobs:
@@ -738,8 +871,18 @@ def scrape_company(company_row, model):
                             avg_embedding = avg_embedding / norm
                         desc_vec_str = json.dumps(avg_embedding.tolist())
                         status = 'done'
+                        log_nlp_event(
+                            message="Job embeddings stored",
+                            event="job_embedding",
+                            extra={
+                                "company": name,
+                                "jobId": job['jobId'],
+                                "titleVectorDimensions": 384,
+                                "descVectorDimensions": 384
+                            }
+                        )
                 except Exception as embed_err:
-                    print(f"[{name}] Embedding generation failed for job {job['jobId']}: {embed_err}")
+                    log_scrape_error(f"[{name}] Embedding generation failed for job {job['jobId']}: {embed_err}")
                     status = 'failed'
 
             cursor.execute("""
@@ -765,7 +908,6 @@ def scrape_company(company_row, model):
 
         # Log completion log structure
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + 'Z',
             "company": name,
             "status": "success",
             "jobsFound": len(raw_jobs),
@@ -773,17 +915,18 @@ def scrape_company(company_row, model):
             "jobsSkipped": skip_count,
             "durationMs": int((time.time() - start_time) * 1000)
         }
-        print(f"[{name}] Scraping success: {log_entry}")
+        log_scrape_info(f"[{name}] Scraping success", log_entry)
 
     except Exception as e:
-        print(f"[{name}] Acquisition error: {e}")
+        log_scrape_error(f"[{name}] Acquisition error: {e}")
         db_path = get_db_path()
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=30.0)
         cursor = conn.cursor()
         # Mark degraded
         cursor.execute("UPDATE companies SET status = 'degraded', degraded_reason = ? WHERE name = ?", (str(e), name))
         conn.commit()
         conn.close()
+
 
 def run_acquisition_cycle(model):
     print("=== Python Acquisition cycle started ===")
@@ -792,7 +935,7 @@ def run_acquisition_cycle(model):
         print(f"Database file not found at {db_path}. Waiting for schema initialization.")
         return
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     # Return dictionary rows
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -813,3 +956,23 @@ def run_acquisition_cycle(model):
             print(f"Fatal error scraping company {company['name']}: {e}")
 
     print("=== Python Acquisition cycle complete ===")
+
+def run_cleanup():
+    print("=== Python daily cleanup started ===")
+    try:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM jobs WHERE expires_at < datetime('now')")
+        jobs_deleted = cursor.rowcount
+        
+        cursor.execute("DELETE FROM matched_jobs WHERE expires_at < datetime('now')")
+        matched_deleted = cursor.rowcount
+        
+        conn.commit()
+        conn.close()
+        print(f"Python daily cleanup complete: {jobs_deleted} jobs deleted, {matched_deleted} matched_jobs deleted")
+    except Exception as e:
+        print(f"Error in python daily cleanup: {e}")
+

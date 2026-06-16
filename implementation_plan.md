@@ -814,4 +814,24 @@ NOTIFY_EMAIL=your_email@gmail.com
 * **Cause**: The email card template only evaluated the negative case (`requiredYoe > userYoe`) to show a warning badge.
 * **Resolution**: Updated [emailService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/emailService.js) to render a green `✅ Experience Match` badge in HTML (and text representation) when the required YoE is less than or equal to the user's configured YoE.
 
+### 13. Log Timestamp Serialization Order
+* **Issue**: The `"timestamp"` key in the JSON log entries of `error.log`, `nlp.log`, and `scrape.log` was serialized at the end of the line, making it hard to read and parse chronological entries.
+* **Cause**: Python dictionary insertion order placed newly added fields (like timestamp) at the end.
+* **Resolution**: Updated `write_log()` in [logger.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/logger.py) to explicitly reconstruct the logging dictionary with `"timestamp"` inserted as the first key.
+
+### 14. CPU Waste Skipping Arista Networks
+* **Issue**: When `ALLOW_ARISTA_BYPASS=false` (default), the scraper would still execute a full initialization phase and evaluate robots.txt files for Arista Networks on every cycle, wasting CPU and network resources.
+* **Resolution**: Implemented an early exit inside `scrape_company()` in [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py) that detects Arista Networks and skips it immediately if `ALLOW_ARISTA_BYPASS` evaluates to false.
+
+### 15. Port Conflicts on Restarting setup.bat
+* **Issue**: Running `setup.bat` multiple times would fail to start the FastAPI server due to `EADDRINUSE` port conflicts since the previous python Uvicorn instance was still listening on the port.
+* **Resolution**: Added port-parsing logic to [setup.bat](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/setup.bat) to extract the active `PORT` from `.env` (defaulting to 3000) and automatically run `taskkill` to terminate any process listening on that port before launching setup or starting uvicorn. Standardized the loop command (`netstat -aon | findstr :%TARGET_PORT% | findstr LISTENING`) and removed parentheses inside the `for` loop body to avoid Command Prompt parser syntax breaks.
+
+### 16. Python stdout buffering in background execution
+* **Issue**: When `setup.bat` launched the FastAPI server process in the background, Python output buffering prevented Uvicorn startup logs from being written to the task log file immediately, making verification of startup status difficult.
+* **Resolution**: Added the `-u` (unbuffered) flag to the Python execution command inside [setup.bat](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/setup.bat) so that all logs flush to standard output immediately.
+
+
+
+
 
