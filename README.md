@@ -9,17 +9,14 @@ A local backend service that scrapes job listings from 11 major tech companies e
 ## Quick Start
 
 ```bat
-:: 1. Run setup (installs everything)
+:: 1. Run setup (installs environment, imports resume, and starts the FastAPI server)
 backend\setup.bat
 
-:: 2. Edit credentials
+:: 2. Edit credentials in .env if needed
 notepad backend\.env
 
-:: 3. Upload your resume + set preferences (see API below)
-
-:: 4. Start the server
-cd backend
-npm start
+:: 3. To restart the server later:
+backend\setup.bat
 ```
 
 ---
@@ -119,9 +116,9 @@ Startup → Scrape all companies → Local Job Embeddings (offline model)
 ```
 
 1. **Scraping**: Uses official ATS APIs where available, falls back to JSON-LD structured data or clean widget POST requests.
-2. **Local AI Matching**: Your resume is converted to a 384-dimensional semantic vector once on upload. Each job gets its own vector at scrape time using a local, offline `@xenova/transformers` `all-MiniLM-L6-v2` model. Matching is pure in-memory math with no external API calls or rate limits.
+2. **Local AI Matching**: Your resume is converted to a 384-dimensional semantic vector once on upload. Each job gets its own vector at scrape time using a local, offline `sentence-transformers` `all-MiniLM-L6-v2` model. Matching is pure in-memory math using NumPy with no external API calls or rate limits.
 3. **Email**: Sent via Gmail SMTP. If it fails, the matches are retried on the next cycle.
-4. **Storage**: Single SQLite file at `backend/data/jobs.db` using Node's native `node:sqlite`. Jobs and matches expire after 3 days automatically.
+4. **Storage**: Single SQLite file at `backend/data/jobs.db` using Python's native `sqlite3`. Jobs and matches expire after 3 days automatically.
 
 ---
 
