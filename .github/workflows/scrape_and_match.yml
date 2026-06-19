@@ -50,8 +50,14 @@ jobs:
           # Force add jobs.db since it is gitignored by default
           if [ -f backend/data/jobs.db ]; then
             git add -f backend/data/jobs.db
-            git diff-index --quiet HEAD || git commit -m "chore: update jobs database [skip ci]"
-            git push
+            if ! git diff-index --quiet HEAD; then
+              git commit -m "chore: update jobs database [skip ci]"
+              # Pull latest changes with rebase, resolving any binary database conflicts in favor of the newly generated database
+              git pull --rebase -X theirs
+              git push
+            else
+              echo "No database changes to commit."
+            fi
           else
             echo "Database file not found, skipping commit."
           fi
