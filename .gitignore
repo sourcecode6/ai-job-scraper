@@ -22,7 +22,6 @@ logs/
 backend/uploads/
 
 # Personal resumes / scratch directories
-*.pdf
 scratch/
 
 # IDE files

@@ -144,3 +144,23 @@ Startup → Scrape all companies → Local Job Embeddings (offline model)
 
 **Resume skills seem wrong?**
 - Re-upload with a cleaner PDF (avoid image-only/scanned resumes)
+
+---
+
+## Running on GitHub Actions (Automated)
+
+Instead of running the server locally, you can automate this pipeline to run every 6 hours using GitHub Actions.
+
+### Setup Instructions
+1. **Push Changes to GitHub**: Ensure `.github/workflows/scrape_and_match.yml`, `backend/nlp_service/workflow_runner.py`, and code modifications are pushed to your repository.
+2. **Configure Secrets**: In your GitHub repository settings, go to **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret** and add:
+   - `EMAIL_USER`: Your Gmail address (sender).
+   - `EMAIL_PASS`: Your 16-character Gmail App Password.
+   - `NOTIFY_EMAIL`: Where you want to receive the digest.
+   - `MATCH_THRESHOLD` (optional, default: `65`): Min cosine similarity percentage.
+   - `DATA_RETENTION_DAYS` (optional, default: `3`): Job retention limit.
+3. **Enable Write Permissions**:
+   - Go to **Settings** -> **Actions** -> **General** -> **Workflow permissions**.
+   - Select **Read and write permissions** (allows the workflow to commit the updated `jobs.db` database back to Git to persist state).
+   - Click **Save**.
+4. **Trigger Manually**: Go to the **Actions** tab, select **Scrape and Match Jobs**, click **Run workflow**, and run it. It will also run automatically every 6 hours.

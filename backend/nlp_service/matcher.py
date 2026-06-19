@@ -206,10 +206,10 @@ def match_for_user_internal(user):
                     "match_score": rounded_score
                 })
 
-    # Fetch previously unnotified matches
+    # Fetch previously unnotified matches (sent less than 2 times)
     cursor.execute("""
         SELECT * FROM matched_jobs
-        WHERE email = ? AND notified = 0 AND expires_at > datetime('now')
+        WHERE email = ? AND notified < 2 AND expires_at > datetime('now')
     """, (email,))
     pending_matches = [dict(row) for row in cursor.fetchall()]
 
@@ -251,16 +251,16 @@ def match_for_user_internal(user):
 
     if sent:
         now_iso = datetime.utcnow().isoformat() + 'Z'
-        # Mark all as notified in DB
+        # Mark all as notified in DB (increment by 1)
         for m in all_matches:
             cursor.execute("""
-                UPDATE matched_jobs SET notified = 1, notified_at = ?
+                UPDATE matched_jobs SET notified = notified + 1, notified_at = ?
                 WHERE email = ? AND company_name = ? AND job_id = ?
             """, (now_iso, email, m['company_name'], m['job_id']))
         
         cursor.execute("UPDATE users SET last_notified_at = ? WHERE email = ?", (now_iso, email))
         conn.commit()
-        print(f"Email digest sent and matches marked notified for {email}")
+        print(f"Email digest sent and matches marked notified (incremented) for {email}")
     else:
         print(f"Email send failed — matches left as pending for {email}")
 

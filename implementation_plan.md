@@ -1,4 +1,44 @@
-# AI Job Scraper App — Implementation Plan (v7 — Python Scraping Migration)
+# AI Job Scraper App — Implementation Plan (v8 — GitHub Actions Workflow Integration)
+
+## Phase 4: GitHub Actions Workflow Integration
+
+This phase outlines the integration of a GitHub Actions workflow to automate the scraping, matching, and emailing processes.
+
+### User Review Required
+
+> [!IMPORTANT]
+> - **Secrets Configuration**: To send email digests, the following secrets must be configured in the GitHub repository (`Settings -> Secrets and variables -> Actions`):
+>   - `EMAIL_USER`: The sender's Gmail address.
+>   - `EMAIL_PASS`: The Gmail App Password.
+>   - `NOTIFY_EMAIL`: The recipient's email address.
+> - **Database Persistence & Tracking**:
+>   - We will update the database/matching logic so that the `notified` column in `matched_jobs` acts as a counter. A job will be sent in email digests at most **2 times** (where `notified < 2`).
+>   - The updated SQLite database (`jobs.db`) will be automatically committed and pushed back to the Git repository at the end of each GitHub Actions run. This ensures that the notification counter and historical scraping state are fully preserved across runs.
+
+### Proposed Changes
+
+#### [MODIFY] [matcher.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/matcher.py)
+* Update `match_for_user_internal` to select pending matched jobs where `notified < 2` (instead of `notified = 0`).
+* Increment the `notified` column by 1 upon a successful email dispatch instead of setting it to 1.
+
+#### [NEW] [workflow_runner.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/workflow_runner.py)
+* A standalone runner script to execute the database initialization, resume import, scraping, matching, and cleanup cycles sequentially in a single command.
+* Runs the daily cleanup script to delete jobs out of the `DATA_RETENTION_DAYS` boundary.
+
+#### [NEW] [scrape_and_match.yml](file:///c:/Users/saura/Desktop/Antigravity/Agent1/.github/workflows/scrape_and_match.yml)
+* GitHub Actions workflow definition file.
+* Runs on a cron schedule **every 6 hours** (`0 */6 * * *`) and supports manual triggering via `workflow_dispatch`.
+* Configures Python, installs dependencies from `requirements.txt`, runs `workflow_runner.py`, and commits changes to `jobs.db` back to the repository.
+
+### Verification Plan
+
+#### Automated Tests
+* Run `workflow_runner.py` locally to verify that it executes the full pipeline end-to-end:
+  ```bash
+  python backend/nlp_service/workflow_runner.py
+  ```
+
+---
 
 ## Phase 3: Python Scraping Service Migration
 

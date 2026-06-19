@@ -31,14 +31,14 @@ def get_db_path():
 
 def load_settings():
     settings = {
-        'matchThreshold': 65.0,
-        'dataRetentionDays': 3,
-        'scrapeIntervalHours': 6,
+        'matchThreshold': float(os.environ.get('MATCH_THRESHOLD', 65.0)),
+        'dataRetentionDays': int(os.environ.get('DATA_RETENTION_DAYS', 3)),
+        'scrapeIntervalHours': int(os.environ.get('SCRAPE_INTERVAL_HOURS', 6)),
         'globalRequestDelayMs': 3000,
         'betweenCompaniesDelayMs': 10000,
         'crawlDelayDefaultMs': 5000,
     }
-    # Read backend/.env
+    # Read backend/.env as fallback/override
     current_dir = os.path.dirname(os.path.abspath(__file__))
     env_path = os.path.abspath(os.path.join(current_dir, '..', '.env'))
     if os.path.exists(env_path):
