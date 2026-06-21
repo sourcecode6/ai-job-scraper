@@ -546,44 +546,44 @@ def scrape_eightfold(company, filters):
                 "num": page_size
             }
 
-        headers = HEADERS.copy()
-        headers.update({
-            'Referer': f"{base_url}/careers",
-            'Origin': base_url
-        })
-
-        res = queue_http(search_url, params=params, headers=headers)
-        if res.status_code != 200:
-            res.raise_for_status()
-
-        data = res.json().get('data', {})
-        positions = data.get('positions', [])
-        total = data.get('count', total or 0)
-
-        if not positions:
-            break
-
-        for p in positions:
-            job_id = p.get('atsJobId') or str(p.get('id'))
-            loc = ", ".join(p.get('locations', []))
-            job_url = f"{base_url}{p.get('positionUrl', '/careers')}"
-
-            jobs.append({
-                "companyName": company['name'],
-                "jobId": str(job_id),
-                "jobTitle": p.get('name', 'Unknown Title'),
-                "location": loc,
-                "department": p.get('department', ''),
-                "postedDate": datetime.fromtimestamp(p['postedTs']).isoformat() + 'Z' if p.get('postedTs') else datetime.utcnow().isoformat() + 'Z',
-                "employmentType": "Full-time",
-                "jobDescription": "", # Detail API is not parsed to avoid trigger block
-                "url": job_url,
-                "applyUrl": job_url
+            headers = HEADERS.copy()
+            headers.update({
+                'Referer': f"{base_url}/careers",
+                'Origin': base_url
             })
 
-        start += len(positions)
-        if start >= total or len(positions) < page_size:
-            break
+            res = queue_http(search_url, params=params, headers=headers)
+            if res.status_code != 200:
+                res.raise_for_status()
+
+            data = res.json().get('data', {})
+            positions = data.get('positions', [])
+            total = data.get('count', total or 0)
+
+            if not positions:
+                break
+
+            for p in positions:
+                job_id = p.get('atsJobId') or str(p.get('id'))
+                loc_str = ", ".join(p.get('locations', []))
+                job_url = f"{base_url}{p.get('positionUrl', '/careers')}"
+
+                jobs.append({
+                    "companyName": company['name'],
+                    "jobId": str(job_id),
+                    "jobTitle": p.get('name', 'Unknown Title'),
+                    "location": loc_str,
+                    "department": p.get('department', ''),
+                    "postedDate": datetime.fromtimestamp(p['postedTs']).isoformat() + 'Z' if p.get('postedTs') else datetime.utcnow().isoformat() + 'Z',
+                    "employmentType": "Full-time",
+                    "jobDescription": "", # Detail API is not parsed to avoid trigger block
+                    "url": job_url,
+                    "applyUrl": job_url
+                })
+
+            start += len(positions)
+            if start >= total or len(positions) < page_size:
+                break
 
     return jobs
 
@@ -611,42 +611,42 @@ def scrape_amd(company, filters):
             if keywords:
                 params['keywords'] = keywords
 
-        res = queue_http('https://careers.amd.com/api/jobs', params=params)
-        if res.status_code != 200:
-            res.raise_for_status()
+            res = queue_http('https://careers.amd.com/api/jobs', params=params)
+            if res.status_code != 200:
+                res.raise_for_status()
 
-        data = res.json()
-        page_jobs = data.get('jobs', [])
-        if not page_jobs:
-            break
+            data = res.json()
+            page_jobs = data.get('jobs', [])
+            if not page_jobs:
+                break
 
-        for j in page_jobs:
-            job = j.get('data', {})
-            if not job:
-                continue
+            for j in page_jobs:
+                job = j.get('data', {})
+                if not job:
+                    continue
 
-            job_id = job.get('req_id') or job.get('slug') or str(int(time.time()))
-            loc = job.get('full_location') or job.get('short_location') or ", ".join(filter(None, [job.get('city'), job.get('state'), job.get('country')]))
-            job_url = job.get('meta_data', {}).get('canonical_url') or job.get('apply_url') or f"https://careers.amd.com/jobs/{job_id}"
+                job_id = job.get('req_id') or job.get('slug') or str(int(time.time()))
+                loc_val = job.get('full_location') or job.get('short_location') or ", ".join(filter(None, [job.get('city'), job.get('state'), job.get('country')]))
+                job_url = job.get('meta_data', {}).get('canonical_url') or job.get('apply_url') or f"https://careers.amd.com/jobs/{job_id}"
 
-            category = (job.get('category') and job['category'][0]) or (job.get('categories') and job['categories'][0]) or ''
+                category = (job.get('category') and job['category'][0]) or (job.get('categories') and job['categories'][0]) or ''
 
-            jobs.append({
-                "companyName": company['name'],
-                "jobId": str(job_id),
-                "jobTitle": job.get('title', 'Unknown Title'),
-                "location": loc,
-                "department": category,
-                "postedDate": job.get('posted_date') or job.get('create_date') or datetime.utcnow().isoformat() + 'Z',
-                "employmentType": job.get('employment_type', 'Full-time'),
-                "jobDescription": job.get('description', ''),
-                "url": job_url,
-                "applyUrl": job.get('apply_url') or job_url
-            })
+                jobs.append({
+                    "companyName": company['name'],
+                    "jobId": str(job_id),
+                    "jobTitle": job.get('title', 'Unknown Title'),
+                    "location": loc_val,
+                    "department": category,
+                    "postedDate": job.get('posted_date') or job.get('create_date') or datetime.utcnow().isoformat() + 'Z',
+                    "employmentType": job.get('employment_type', 'Full-time'),
+                    "jobDescription": job.get('description', ''),
+                    "url": job_url,
+                    "applyUrl": job.get('apply_url') or job_url
+                })
 
-        if len(page_jobs) < limit:
-            break
-        page += 1
+            if len(page_jobs) < limit:
+                break
+            page += 1
 
     return jobs
 

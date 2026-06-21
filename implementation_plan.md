@@ -879,6 +879,12 @@ NOTIFY_EMAIL=your_email@gmail.com
 * **Issue**: ARM's HTML scraper was retrieving all global job postings without applying any region/location filtering.
 * **Resolution**: Added the standard list of location filters (India, UK, and European countries) to ARM's database initialization profile in [db_init.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/db_init.py) and updated the `scrape_arm` function in [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py) to filter out jobs whose scraped location details do not match these criteria.
 
+### 18. Infinite Loop Bug in Eightfold and AMD Scrapers
+* **Issue**: The scraper workflow would hang/get stuck indefinitely after processing Cisco Systems.
+* **Cause**: In both `scrape_eightfold()` and `scrape_amd()` within [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py), the `while True:` loop only indented the query parameter definition block, while the actual HTTP request, parsing logic, pagination increment, and break assertions were placed outside the `while True:` loop. This caused the loop to execute infinitely without ever calling the network or advancing.
+* **Resolution**: Corrected the indentation of the entire network fetching, parsing, and pagination logic inside `scrape_eightfold()` and `scrape_amd()` to place them inside the `while True:` loop.
+
+
 
 
 
