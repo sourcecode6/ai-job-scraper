@@ -43,6 +43,13 @@ jobs:
         run: |
           python backend/nlp_service/workflow_runner.py
 
+      - name: Upload Scraper Logs
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: scraper-logs
+          path: backend/logs/
+
       - name: Commit and push updated database
         run: |
           git config --global user.name "github-actions[bot]"

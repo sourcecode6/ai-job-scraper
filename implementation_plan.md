@@ -29,6 +29,8 @@ This phase outlines the integration of a GitHub Actions workflow to automate the
 * GitHub Actions workflow definition file.
 * Runs on a cron schedule **every 6 hours** (`0 */6 * * *`) and supports manual triggering via `workflow_dispatch`.
 * Configures Python, installs dependencies from `requirements.txt`, runs `workflow_runner.py`, and commits changes to `jobs.db` back to the repository.
+* Uploads log files (`backend/logs/*`) as a workflow run artifact (`scraper-logs`) for easy debugging access.
+
 
 ### Verification Plan
 
