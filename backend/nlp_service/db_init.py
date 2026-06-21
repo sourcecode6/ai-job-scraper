@@ -10,7 +10,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite',
         'filters': {
-            'locations': ['India', 'Remote'],
+            'locations': ['India', 'Remote', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Sweden', 'Switzerland', 'Ireland', 'Italy', 'Spain'],
             'searchText': '',
             'limit': 20,
         }
@@ -21,7 +21,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://jobs.smartrecruiters.com/AristaNetworks',
         'filters': {
-            'country': 'in'
+            'countries': ['in', 'gb', 'de', 'fr', 'pl', 'nl', 'ie', 'it', 'es', 'se', 'ch']
         }
     },
     {
@@ -31,7 +31,7 @@ DEFAULT_COMPANIES = [
         'careerUrl': 'https://careers.cisco.com/global/en/search-results',
         'filters': {
             'keywords': 'engineer',
-            'location': 'India',
+            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
         }
     },
     {
@@ -40,7 +40,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://careers.qualcomm.com',
         'filters': {
-            'location': 'India',
+            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
             'query': '',
         }
     },
@@ -50,7 +50,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://careers.amd.com/careers-home/jobs',
         'filters': {
-            'location': 'India',
+            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
             'keywords': '',
         }
     },
@@ -60,7 +60,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://broadcom.wd1.myworkdayjobs.com/External_Career',
         'filters': {
-            'locations': ['India', 'Remote'],
+            'locations': ['India', 'Remote', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Sweden', 'Switzerland', 'Ireland', 'Italy', 'Spain'],
             'searchText': '',
             'limit': 20,
         }
@@ -71,7 +71,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://intel.wd1.myworkdayjobs.com/en-US/External',
         'filters': {
-            'locations': ['India', 'Remote'],
+            'locations': ['India', 'Remote', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Sweden', 'Switzerland', 'Ireland', 'Italy', 'Spain'],
             'searchText': '',
             'limit': 20,
         }
@@ -82,7 +82,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://careers.microsoft.com',
         'filters': {
-            'location': 'India',
+            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
             'query': '',
         }
     },
@@ -92,7 +92,7 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://careers.ibm.com/careers/search',
         'filters': {
-            'country': 'India',
+            'countries': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
             'category': 'Software Engineering',
         }
     },
@@ -102,8 +102,17 @@ DEFAULT_COMPANIES = [
         'tier': 2,
         'careerUrl': 'https://jobs.ericsson.com',
         'filters': {
-            'location': 'India',
+            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
             'query': '',
+        }
+    },
+    {
+        'name': 'Arm',
+        'ats': 'arm',
+        'tier': 2,
+        'careerUrl': 'https://careers.arm.com',
+        'filters': {
+            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
         }
     }
 ]

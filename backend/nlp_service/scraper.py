@@ -366,48 +366,51 @@ def scrape_smartrecruiters(company, filters):
     company_id = company['smartRecruitersId']
     endpoint = f"https://api.smartrecruiters.com/v1/companies/{company_id}/postings"
 
+    countries = filters.get('countries') or ([filters.get('country')] if filters.get('country') else [None])
     jobs = []
-    offset = 0
-    limit = 100
-    has_more = True
 
-    while has_more:
-        params = {"limit": limit, "offset": offset}
-        if filters.get('country'):
-            params['country'] = filters['country']
+    for country in countries:
+        offset = 0
+        limit = 100
+        has_more = True
 
-        res = queue_http(endpoint, params=params)
-        if res.status_code != 200:
-            res.raise_for_status()
+        while has_more:
+            params = {"limit": limit, "offset": offset}
+            if country:
+                params['country'] = country
 
-        data = res.json()
-        postings = data.get('content', [])
-        if not postings:
-            break
+            res = queue_http(endpoint, params=params)
+            if res.status_code != 200:
+                res.raise_for_status()
 
-        for p in postings:
-            job_id = p.get('refNumber') or p.get('id') or str(int(time.time()))
-            location_parts = [p.get('location', {}).get('city'), p.get('location', {}).get('region'), p.get('location', {}).get('country')]
-            location = ", ".join(filter(None, location_parts))
-            job_url = f"https://jobs.smartrecruiters.com/{company_id}/{p.get('id')}"
+            data = res.json()
+            postings = data.get('content', [])
+            if not postings:
+                break
 
-            jobs.append({
-                "companyName": company['name'],
-                "jobId": str(job_id),
-                "jobTitle": p.get('name', 'Unknown Title'),
-                "location": location,
-                "department": p.get('department', {}).get('label', ''),
-                "postedDate": p.get('releasedDate', datetime.utcnow().isoformat() + 'Z'),
-                "employmentType": p.get('typeOfEmployment', {}).get('label', 'Full-time'),
-                "jobDescription": p.get('customField', {}).get('description', ''),
-                "url": job_url,
-                "applyUrl": job_url
-            })
+            for p in postings:
+                job_id = p.get('refNumber') or p.get('id') or str(int(time.time()))
+                location_parts = [p.get('location', {}).get('city'), p.get('location', {}).get('region'), p.get('location', {}).get('country')]
+                location = ", ".join(filter(None, location_parts))
+                job_url = f"https://jobs.smartrecruiters.com/{company_id}/{p.get('id')}"
 
-        total = data.get('totalFound', 0)
-        offset += len(postings)
-        if offset >= total or len(postings) < limit:
-            has_more = False
+                jobs.append({
+                    "companyName": company['name'],
+                    "jobId": str(job_id),
+                    "jobTitle": p.get('name', 'Unknown Title'),
+                    "location": location,
+                    "department": p.get('department', {}).get('label', ''),
+                    "postedDate": p.get('releasedDate', datetime.utcnow().isoformat() + 'Z'),
+                    "employmentType": p.get('typeOfEmployment', {}).get('label', 'Full-time'),
+                    "jobDescription": p.get('customField', {}).get('description', ''),
+                    "url": job_url,
+                    "applyUrl": job_url
+                })
+
+            total = data.get('totalFound', 0)
+            offset += len(postings)
+            if offset >= total or len(postings) < limit:
+                has_more = False
 
     return jobs
 
@@ -440,7 +443,7 @@ def get_cisco_csrf():
 
 def scrape_cisco(company, filters):
     # Works for Cisco
-    location = filters.get('location', 'India')
+    locations = filters.get('locations') or [filters.get('location', 'India')]
     keywords = filters.get('keywords', 'engineer')
 
     jobs = []
@@ -467,7 +470,7 @@ def scrape_cisco(company, filters):
             "keywords": keywords,
             "global": True,
             "selected_fields": {
-                "country": [location]
+                "country": locations
             },
             "lang": "en_global",
             "deviceType": "desktop",
@@ -526,19 +529,22 @@ def scrape_eightfold(company, filters):
     domain = company['eightfoldDomain']
     search_url = f"{base_url}/api/pcsx/search"
 
+    location_filter = filters.get('locations') or [filters.get('location', 'India')]
     jobs = []
-    start = 0
-    page_size = 10
-    total = None
 
-    while True:
-        params = {
-            "domain": domain,
-            "location": filters.get('location', 'India'),
-            "query": filters.get('query', ''),
-            "start": start,
-            "num": page_size
-        }
+    for loc in location_filter:
+        start = 0
+        page_size = 10
+        total = None
+
+        while True:
+            params = {
+                "domain": domain,
+                "location": loc,
+                "query": filters.get('query', ''),
+                "start": start,
+                "num": page_size
+            }
 
         headers = HEADERS.copy()
         headers.update({
@@ -583,25 +589,27 @@ def scrape_eightfold(company, filters):
 
 def scrape_amd(company, filters):
     # Works for AMD
-    location = filters.get('location', 'India')
+    locations = filters.get('locations') or [filters.get('location', 'India')]
     keywords = filters.get('keywords', '')
 
     jobs = []
-    page = 1
-    limit = 50
 
-    while True:
-        params = {
-            "page": str(page),
-            "limit": str(limit),
-            "sortBy": "relevance",
-            "descending": "false",
-            "internal": "false"
-        }
-        if location:
-            params['location'] = location
-        if keywords:
-            params['keywords'] = keywords
+    for loc in locations:
+        page = 1
+        limit = 50
+
+        while True:
+            params = {
+                "page": str(page),
+                "limit": str(limit),
+                "sortBy": "relevance",
+                "descending": "false",
+                "internal": "false"
+            }
+            if loc:
+                params['location'] = loc
+            if keywords:
+                params['keywords'] = keywords
 
         res = queue_http('https://careers.amd.com/api/jobs', params=params)
         if res.status_code != 200:
@@ -646,6 +654,9 @@ def scrape_ibm(company, filters):
     # Works for IBM
     endpoint = 'https://www-api.ibm.com/search/api/v2'
 
+    countries = filters.get('countries') or ([filters.get('country')] if filters.get('country') else [])
+    category = filters.get('category')
+
     jobs = []
     from_offset = 0
     page_size = 50
@@ -668,10 +679,10 @@ def scrape_ibm(company, filters):
             ]
         }
 
-        if filters.get('country'):
-            body['query']['bool']['must'].append({"match": {"field_keyword_05": filters['country']}})
-        if filters.get('category'):
-            body['query']['bool']['must'].append({"match": {"field_keyword_08": filters['category']}})
+        if countries:
+            body['query']['bool']['must'].append({"terms": {"field_keyword_05": countries}})
+        if category:
+            body['query']['bool']['must'].append({"match": {"field_keyword_08": category}})
 
         res = queue_http(endpoint, method='POST', json=body)
         if res.status_code != 200:
@@ -708,6 +719,81 @@ def scrape_ibm(company, filters):
         from_offset += len(hits)
         if from_offset >= total or len(hits) < page_size:
             break
+
+    return jobs
+
+def scrape_arm(company, filters):
+    from bs4 import BeautifulSoup
+    jobs = []
+    page = 1
+    has_more = True
+    locations_filter = filters.get('locations')
+
+    while has_more:
+        url = f"https://careers.arm.com/search-jobs?p={page}"
+        res = queue_http(url)
+        if res.status_code != 200:
+            break
+
+        soup = BeautifulSoup(res.text, 'html.parser')
+        ul = soup.find('ul', id='search-results-jobs')
+        if not ul:
+            break
+
+        cards = ul.find_all('li', class_='job-card')
+        if not cards:
+            break
+
+        for card in cards:
+            a_tag = card.find('a', class_='job-card__title')
+            if not a_tag:
+                continue
+
+            job_id = a_tag.get('data-job-id') or a_tag.get('href', '').split('/')[-1]
+            title = a_tag.text.strip()
+            href = a_tag.get('href', '')
+            job_url = f"https://careers.arm.com{href}" if href.startswith('/') else href
+
+            loc_span = card.find('span', class_='location')
+            loc = loc_span.text.strip() if loc_span else 'Not specified'
+
+            if locations_filter:
+                loc_lower = loc.lower()
+                matched = False
+                for filter_loc in locations_filter:
+                    if filter_loc.lower() in loc_lower:
+                        matched = True
+                        break
+                if not matched:
+                    continue
+
+            cat_span = card.find('span', class_='category')
+            category = cat_span.text.strip() if cat_span else ''
+
+            intro_span = card.find('span', class_='job-card__intro')
+            desc = intro_span.text.strip() if intro_span else ''
+
+            jobs.append({
+                "companyName": company['name'],
+                "jobId": str(job_id),
+                "jobTitle": title,
+                "location": loc,
+                "department": category,
+                "postedDate": datetime.utcnow().isoformat() + 'Z',
+                "employmentType": "Full-time",
+                "jobDescription": desc,
+                "url": job_url,
+                "applyUrl": job_url
+            })
+
+        next_btn = soup.find('a', class_='next')
+        if not next_btn or '/search-jobs&p=' not in next_btn.get('href', '') and '?p=' not in next_btn.get('href', '') and f"p={page+1}" not in next_btn.get('href', ''):
+            total_count = int(ul.get('data-results-count') or 0)
+            if len(jobs) >= total_count:
+                has_more = False
+                break
+
+        page += 1
 
     return jobs
 
@@ -787,6 +873,8 @@ def scrape_company(company_row, model):
         target_url = "https://careers.amd.com/api/jobs"
     elif ats == 'ibm':
         target_url = "https://www-api.ibm.com/search/api/v2"
+    elif ats == 'arm':
+        target_url = "https://careers.arm.com/search-jobs"
 
     # Check robots.txt compliance
     if tier >= 2 and ats != 'workday':
@@ -812,6 +900,8 @@ def scrape_company(company_row, model):
             raw_jobs = scrape_amd(company, filters)
         elif ats == 'ibm':
             raw_jobs = scrape_ibm(company, filters)
+        elif ats == 'arm':
+            raw_jobs = scrape_arm(company, filters)
         else:
             # Fallback (Google is commented out, so we don't expect other types)
             log_scrape_error(f"[{name}] ATS type {ats} not fully implemented in python. Skipping.")

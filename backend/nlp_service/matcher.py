@@ -19,11 +19,30 @@ def compute_similarity(vec_a, vec_b):
         return 0.0
     return float(dot / (norm_a * norm_b))
 
-def is_india(location):
+def get_location_priority_rank(location):
     if not location:
-        return False
+        return 3
     loc = location.lower()
-    return 'india' in loc or ', in' in loc or loc.endswith(' in') or re.search(r'\bin\b', loc) is not None
+    # Check India
+    if 'india' in loc or ', in' in loc or loc.endswith(' in') or re.search(r'\bin\b', loc) is not None:
+        return 0
+    # Check UK
+    if 'united kingdom' in loc or ' u.k.' in loc or '\buk\b' in loc or ', uk' in loc or 'great britain' in loc or 'england' in loc or 'scotland' in loc or 'wales' in loc or 'london' in loc:
+        return 1
+    # Check Europe
+    european_keywords = [
+        'europe', 'germany', 'france', 'italy', 'spain', 'poland', 'netherlands', 'belgium',
+        'austria', 'switzerland', 'sweden', 'norway', 'denmark', 'finland', 'ireland', 'portugal',
+        'greece', 'czech republic', 'hungary', 'romania', 'bulgaria', 'slovakia', 'croatia',
+        'lithuania', 'latvia', 'estonia', 'slovenia', 'luxembourg', 'malta', 'cyprus',
+        'munich', 'berlin', 'paris', 'amsterdam', 'dublin', 'gdansk', 'warsaw', 'regensburg'
+    ]
+    if any(kw in loc for kw in european_keywords):
+        return 1
+    # Check remote
+    if 'remote' in loc:
+        return 2
+    return 3
 
 def is_job_within_retention(job_posted_date, job_scraped_at, retention_days):
     now = datetime.utcnow()
@@ -231,11 +250,11 @@ def match_for_user_internal(user):
             seen_ids.add(key)
             all_matches.append(m)
 
-    # Sort matches: India first, then by match score descending
+    # Sort matches: India first, then UK/Europe, then remote, then others, descending by score
     def sort_key(m):
         loc = m.get('location', '')
         score = m.get('match_score') or m.get('match_score') or 0.0
-        return (not is_india(loc), -score)
+        return (get_location_priority_rank(loc), -score)
 
     all_matches.sort(key=sort_key)
 

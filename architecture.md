@@ -72,7 +72,7 @@ Tracks registered user profiles, resume vectors, extracted skills, and configura
 ### 3.2. `companies`
 Lists tracked employers, ATS portals, scraped records, and degradation tracking.
 - `name` (TEXT, PRIMARY KEY): Unique company identifier (e.g., "AMD", "NVIDIA").
-- `ats` (TEXT): Portal type (e.g., "workday", "smartrecruiters", "cisco", "eightfold", "amd", "ibm").
+- `ats` (TEXT): Portal type (e.g., "workday", "smartrecruiters", "cisco", "eightfold", "amd", "ibm", "arm").
 - `tier` (INTEGER): Priority level for scraping.
 - `career_url` (TEXT): URL to the career home page.
 - `status` (TEXT): Status flags (`active`, `degraded`).
@@ -84,7 +84,7 @@ Stores scraped job postings, locations, description details, and pre-calculated 
 - `company_name` (TEXT): References `companies.name`.
 - `job_id` (TEXT): ATS unique job ID.
 - `job_title` (TEXT): Clean job title.
-- `location` (TEXT): Job location (e.g., "Pune, IN").
+- `location` (TEXT): Job location (e.g., "Pune, IN", "London, UK", etc.).
 - `department` (TEXT): Job department.
 - `posted_date` (TEXT): ISO or relative date.
 - `employment_type` (TEXT): Job type (e.g., "Full-time").
@@ -133,6 +133,8 @@ Deduplicates matches and records notification dispatch histories.
 - Respects `robots.txt` rules for each site.
 - Directly invokes native site API endpoints (JSON REST services) to retrieve jobs, avoiding heavy headless browser instances (Playwright/Selenium).
 - For each job posting, it extracts matching skills from `skills_vocab.json` using word boundary regex patterns, parses the YoE requirements, and calculates vector representations using SentenceTransformers.
+- **Programmatic Filtering**: For custom HTML-scraped portals like ARM, the scraper reads the configured company location filters (e.g., India, UK, Europe) and filters the scraped jobs programmatically in Python since the portal does not support standard URL query parameters for these filters.
+
 
 ### 4.3. Semantic Match Engine (`matcher.py`)
 - Computes matching between the user's resume vector and scraped jobs:
@@ -140,7 +142,7 @@ Deduplicates matches and records notification dispatch histories.
     $$\text{Score} = (\text{Cosine Similarity}_{\text{Title}} \times 0.5) + (\text{Cosine Similarity}_{\text{Description}} \times 0.5)$$
   - **YoE Verification**: Determines if the job's minimum experience exceeds the user's configured experience.
   - **Deduplication**: Inserts new matches into `matched_jobs` with `notified = 0`.
-  - **India-First Sorting**: Groups matches prioritising India-based jobs first, then sorts by score descending.
+  - **Location-Based Prioritized Sorting**: Groups matches prioritizing India-based jobs first (Rank 0), then United Kingdom and Europe (Rank 1), then Remote roles (Rank 2), then other regions (Rank 3), and sorts by score descending within each group.
 
 ### 4.4. SMTP Email Digest Engine (`email_sender.py`)
 - Dispatches digests using Gmail SMTP.
@@ -196,7 +198,7 @@ sequenceDiagram
         Matcher->>Matcher: Validate experience & Filter by threshold
         Matcher->>DB: Insert pending matches (notified = 0)
         Matcher->>DB: Query combined pending matches
-        Matcher->>Matcher: Sort: India locations first, then score DESC
+        Matcher->>Matcher: Sort: India first, then UK/Europe, then Remote, then others, DESC score
         Matcher->>SMTP: Connect & send HTML digest
         Matcher->>DB: Mark matched_jobs as notified = 1
     end

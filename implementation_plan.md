@@ -135,7 +135,7 @@ A backend-only, email-notification-driven job scraping and matching system for *
 | UI | **Email digest only** — no frontend |
 | Deployment | **Local Windows PC** |
 | Scrape Frequency | **On startup + every 6 hours** |
-| Location Filter | **India + Remote** (Workday companies) |
+| Location Filter | **India, United Kingdom, Europe + Remote** |
 | Keyword Filter | **Any engineering/technical role** (Google) |
 
 ---
@@ -237,7 +237,7 @@ Body: {
   "limit": 20,
   "offset": 0,
   "searchText": "",
-  "locations": ["India", "Remote"]    ← India + Remote filter
+  "locations": ["India", "Remote", "United Kingdom", "Germany", "France", "Poland", "Netherlands", "Sweden", "Switzerland", "Ireland", "Italy", "Spain"]
 }
 ```
 Publicly accessible, no auth, same endpoint the career page's JS uses.
@@ -259,7 +259,7 @@ Publicly accessible REST API endpoint, respects standard rate-limits via `reques
 **Google Hybrid** (Tier 2/3):
 ```
 1. Playwright: load careers.google.com/jobs/results
-   → filter: category=ENGINEERING, location=India|Remote
+    → filter: category=ENGINEERING, locations=India|Remote|UK|Europe
 2. Extract job listing URLs from rendered DOM
 3. For each URL: axios GET → Cheerio extract JSON-LD → parse JobPosting
 ```
@@ -314,6 +314,8 @@ HF API 503   → wait 20s, retry once, store job without vector if still fails
 | 9 | **Microsoft** | Eightfold AI | 2 — JSON-LD | `jobs.careers.microsoft.com` | All public listings |
 | 10 | **IBM** | Kenexa BrassRing | 2 — JSON-LD | `ibm.com/careers` | India + Engineering/technical roles |
 | 11 | **Ericsson** | Eightfold AI | 2 — JSON-LD | `jobs.ericsson.com` | All public listings |
+| 12 | **Arm** | Custom HTML (Talentbrew) | 2 — HTML Scraper | `careers.arm.com` | India, UK, Europe |
+
 
 ---
 
@@ -431,7 +433,7 @@ CREATE TABLE companies (
   ats             TEXT NOT NULL,       -- 'workday' | 'jsonld' | 'playwright'
   tier            INTEGER NOT NULL,    -- 1, 2, or 3
   career_url      TEXT NOT NULL,
-  filters         TEXT,               -- JSON: {"locations":["India","Remote"],"category":"ENGINEERING"}
+  filters         TEXT,               -- JSON: {"locations":["India","United Kingdom","Germany","France","Poland","Netherlands","Ireland","Italy","Spain","Sweden","Switzerland"],"category":"ENGINEERING"}
   status          TEXT DEFAULT 'active', -- 'active' | 'degraded'
   last_scraped_at TEXT,               -- ISO timestamp
   degraded_reason TEXT                -- reason if status='degraded'
@@ -772,7 +774,7 @@ NOTIFY_EMAIL=your_email@gmail.com
 > These are minor items that can be decided during or after build:
 > 1. **HuggingFace model warm-up**: Free tier models "sleep" — first call may take 20–30s. The retry logic handles this, but first run after long idle will be slow.
 > 2. **Google Playwright stability**: careers.google.com may require specific wait-for-selector logic that needs tuning against the live page.
-> 3. **IBM filtering**: `ibm.com/careers` is filtered by **location=India** and **category=Engineering/Technical** at fetch time via URL query params — this significantly reduces volume to a manageable set per cycle.
+> 3. **IBM filtering**: `ibm.com/careers` is filtered by **countries=[India, UK, Germany, France, etc.]** and **category=Engineering/Technical** at fetch time — this significantly reduces volume to a manageable set per cycle.
 
 ---
 
@@ -831,9 +833,9 @@ NOTIFY_EMAIL=your_email@gmail.com
   1. Updated `matchService.js` to run an in-memory age check (`isJobWithinRetention`) parsing absolute/relative dates against the user's `DATA_RETENTION_DAYS`.
   2. Updated `processJob` in `index.js` to calculate `expires_at` based on the actual job `posted_date` so that older jobs expire instantly and are cleaned up.
 
-### 9. Sort Matches by Country (India First) and Match Percentage
+### 9. Sort Matches by Country (India First, then UK/Europe, then Remote, then others) and Match Percentage
 * **Issue**: It was hard to find the best match because the jobs in the email were in arbitrary database order.
-* **Resolution**: Added sorting logic in `matchService.js` to order matches first by location (placing jobs located in India at the top) and then by match score in descending order before sending them to the email generator.
+* **Resolution**: Added sorting logic in `matcher.py` to order matches first by location priority (India: Rank 0, UK/Europe: Rank 1, Remote: Rank 2, Others: Rank 3) and then by match score in descending order before sending them to the email generator.
 
 ### 10. Removed Skills Cap from Database and Logging Layers
 * **Issue**: Recognized skill tags in the database and execution logs were truncated to a maximum of 40 elements, preventing a full historic record of extracted technologies.
@@ -870,6 +872,10 @@ NOTIFY_EMAIL=your_email@gmail.com
 ### 16. Python stdout buffering in background execution
 * **Issue**: When `setup.bat` launched the FastAPI server process in the background, Python output buffering prevented Uvicorn startup logs from being written to the task log file immediately, making verification of startup status difficult.
 * **Resolution**: Added the `-u` (unbuffered) flag to the Python execution command inside [setup.bat](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/setup.bat) so that all logs flush to standard output immediately.
+
+### 17. Location Filtering for ARM
+* **Issue**: ARM's HTML scraper was retrieving all global job postings without applying any region/location filtering.
+* **Resolution**: Added the standard list of location filters (India, UK, and European countries) to ARM's database initialization profile in [db_init.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/db_init.py) and updated the `scrape_arm` function in [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py) to filter out jobs whose scraped location details do not match these criteria.
 
 
 
