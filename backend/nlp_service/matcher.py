@@ -67,12 +67,12 @@ def is_job_within_retention(job_posted_date, job_scraped_at, retention_days):
         if 'yesterday' in lowercase_posted:
             return retention_days >= 1
 
-        days_match = re.search(r'(\d+)\s+days?\s+ago', lowercase_posted)
+        days_match = re.search(r'(\d+)\+?\s+days?\s+ago', lowercase_posted)
         if days_match:
             days_ago = int(days_match.group(1))
             return days_ago <= retention_days
-
-        weeks_match = re.search(r'(\d+)\s+weeks?\s+ago', lowercase_posted)
+ 
+        weeks_match = re.search(r'(\d+)\+?\s+weeks?\s+ago', lowercase_posted)
         if weeks_match:
             weeks_ago = int(weeks_match.group(1))
             return (weeks_ago * 7) <= retention_days
@@ -169,7 +169,7 @@ def match_for_user_internal(user):
         WHERE company_name IN ({placeholders})
         AND embedding_status = 'done'
         AND (embedding_vector IS NOT NULL OR (title_vector IS NOT NULL AND description_vector IS NOT NULL))
-        AND expires_at > datetime('now')
+        AND datetime(expires_at) > datetime('now')
     """
     cursor.execute(query, selected_companies)
     jobs = [dict(row) for row in cursor.fetchall()]
@@ -227,8 +227,10 @@ def match_for_user_internal(user):
 
     # Fetch previously unnotified matches (sent less than 2 times)
     cursor.execute("""
-        SELECT * FROM matched_jobs
-        WHERE email = ? AND notified < 2 AND expires_at > datetime('now')
+        SELECT mj.*, j.posted_date, j.scraped_at
+        FROM matched_jobs mj
+        LEFT JOIN jobs j ON mj.company_name = j.company_name AND mj.job_id = j.job_id
+        WHERE mj.email = ? AND mj.notified < 2 AND datetime(mj.expires_at) > datetime('now')
     """, (email,))
     pending_matches = [dict(row) for row in cursor.fetchall()]
 
@@ -243,8 +245,11 @@ def match_for_user_internal(user):
             seen_ids.add(key)
             all_matches.append(m)
             
-    # Process pending matches
+    # Process pending matches (filtering by current retention setting)
     for m in pending_matches:
+        if m['posted_date'] or m['scraped_at']:
+            if not is_job_within_retention(m['posted_date'], m['scraped_at'], retention_days):
+                continue
         key = (m['company_name'], m['job_id'])
         if key not in seen_ids:
             seen_ids.add(key)

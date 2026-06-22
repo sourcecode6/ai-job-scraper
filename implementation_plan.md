@@ -884,8 +884,17 @@ NOTIFY_EMAIL=your_email@gmail.com
 * **Cause**: In both `scrape_eightfold()` and `scrape_amd()` within [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py), the `while True:` loop only indented the query parameter definition block, while the actual HTTP request, parsing logic, pagination increment, and break assertions were placed outside the `while True:` loop. This caused the loop to execute infinitely without ever calling the network or advancing.
 * **Resolution**: Corrected the indentation of the entire network fetching, parsing, and pagination logic inside `scrape_eightfold()` and `scrape_amd()` to place them inside the `while True:` loop.
 
+### 19. Relative Date Parsing Bug for plus signs (e.g. 15+ days ago)
+* **Issue**: Jobs posted weeks ago (e.g., "15+ days ago" on Workday) were matching the current day and getting emailed.
+* **Cause**: The relative date regex in `parse_relative_date` (`scraper.py`) and `is_job_within_retention` (`matcher.py`) did not expect a `+` symbol (like `15+ days ago` or `2+ weeks ago`). This caused the parser to fall back to `0` days ago (today), assigning a future `expires_at` date.
+* **Resolution**: Updated the regexes to allow an optional `+` symbol (e.g. `r'(\d+)\+?\s+days?\s+ago'`), enabling correct parsing of relative ages.
 
+### 20. SQLite Datetime Comparison Format Mismatch
+* **Issue**: Expired jobs were not being cleaned up by daily cleanup, and expired jobs were still matched and emailed.
+* **Cause**: Dates are stored in SQLite as text. Python saved `expires_at` in ISO format (with 'T' and 'Z'), while SQLite's `datetime('now')` returned space-separated formats (without 'T'/'Z'). Since character `'T'` is lexicographically greater than `' '`, direct string comparisons failed.
+* **Resolution**: Wrapped the `expires_at` column references in SQLite's `datetime()` function (e.g. `datetime(expires_at) > datetime('now')`) across `matcher.py` and `scraper.py` queries.
 
-
-
-
+### 21. Missing Age Checks on Pending Matches
+* **Issue**: Changing the `DATA_RETENTION_DAYS` limit (e.g. from 15 to 3) in `.env` did not stop previously matched jobs from being sent again in future email digests if their stored expiration date was set using the old limit.
+* **Cause**: The query for `pending_matches` in `matcher.py` did not check the age of the job using the current retention settings, relying solely on `expires_at`.
+* **Resolution**: Updated the query to `LEFT JOIN` the `jobs` table to retrieve `posted_date` and `scraped_at`, then ran `is_job_within_retention` on all pending matches to filter them against the active retention limit.

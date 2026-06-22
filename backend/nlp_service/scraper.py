@@ -824,11 +824,11 @@ def parse_relative_date(date_str, retention_days):
     elif 'today' in lower:
         days_ago = 0
     else:
-        days_match = re.search(r'(\d+)\s+days?\s+ago', lower)
+        days_match = re.search(r'(\d+)\+?\s+days?\s+ago', lower)
         if days_match:
             days_ago = int(days_match.group(1))
         else:
-            weeks_match = re.search(r'(\d+)\s+weeks?\s+ago', lower)
+            weeks_match = re.search(r'(\d+)\+?\s+weeks?\s+ago', lower)
             if weeks_match:
                 days_ago = int(weeks_match.group(1)) * 7
             elif 'month' in lower or 'year' in lower or '30+ days' in lower:
@@ -1054,10 +1054,10 @@ def run_cleanup():
         conn = sqlite3.connect(db_path, timeout=30.0)
         cursor = conn.cursor()
         
-        cursor.execute("DELETE FROM jobs WHERE expires_at < datetime('now')")
+        cursor.execute("DELETE FROM jobs WHERE datetime(expires_at) < datetime('now')")
         jobs_deleted = cursor.rowcount
         
-        cursor.execute("DELETE FROM matched_jobs WHERE expires_at < datetime('now')")
+        cursor.execute("DELETE FROM matched_jobs WHERE datetime(expires_at) < datetime('now')")
         matched_deleted = cursor.rowcount
         
         conn.commit()
