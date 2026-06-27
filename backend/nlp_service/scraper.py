@@ -824,11 +824,11 @@ def parse_relative_date(date_str, retention_days):
     elif 'today' in lower:
         days_ago = 0
     else:
-        days_match = re.search(r'(\d+)\+?\s+days?\s+ago', lower)
+        days_match = re.search(r'(\d+)\+?\s+days?\s+(ago|back)', lower)
         if days_match:
             days_ago = int(days_match.group(1))
         else:
-            weeks_match = re.search(r'(\d+)\+?\s+weeks?\s+ago', lower)
+            weeks_match = re.search(r'(\d+)\+?\s+weeks?\s+(ago|back)', lower)
             if weeks_match:
                 days_ago = int(weeks_match.group(1)) * 7
             elif 'month' in lower or 'year' in lower or '30+ days' in lower:
@@ -839,7 +839,7 @@ def parse_relative_date(date_str, retention_days):
         expires_at = now - timedelta(days=days_ago - retention_days)
         return posted_date.isoformat() + 'Z', expires_at.isoformat() + 'Z'
 
-    return now.isoformat() + 'Z', expires_at.isoformat() + 'Z'
+    return date_str, expires_at.isoformat() + 'Z'
 
 def scrape_company(company_row, model):
     start_time = time.time()

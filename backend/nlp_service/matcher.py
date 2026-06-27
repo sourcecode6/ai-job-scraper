@@ -67,12 +67,12 @@ def is_job_within_retention(job_posted_date, job_scraped_at, retention_days):
         if 'yesterday' in lowercase_posted:
             return retention_days >= 1
 
-        days_match = re.search(r'(\d+)\+?\s+days?\s+ago', lowercase_posted)
+        days_match = re.search(r'(\d+)\+?\s+days?\s+(ago|back)', lowercase_posted)
         if days_match:
             days_ago = int(days_match.group(1))
             return days_ago <= retention_days
  
-        weeks_match = re.search(r'(\d+)\+?\s+weeks?\s+ago', lowercase_posted)
+        weeks_match = re.search(r'(\d+)\+?\s+weeks?\s+(ago|back)', lowercase_posted)
         if weeks_match:
             weeks_ago = int(weeks_match.group(1))
             return (weeks_ago * 7) <= retention_days
