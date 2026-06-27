@@ -53,6 +53,7 @@ def is_job_within_retention(job_posted_date, job_scraped_at, retention_days):
         try:
             # Try ISO date parsing
             s = job_posted_date.rstrip('Z')
+            s = re.sub(r'([+-]\d{2})(\d{2})$', r'\1:\2', s)
             posted_dt = datetime.fromisoformat(s)
             if posted_dt.tzinfo is not None:
                 posted_dt = posted_dt.replace(tzinfo=None)
@@ -84,6 +85,7 @@ def is_job_within_retention(job_posted_date, job_scraped_at, retention_days):
     if job_scraped_at:
         try:
             s = job_scraped_at.rstrip('Z')
+            s = re.sub(r'([+-]\d{2})(\d{2})$', r'\1:\2', s)
             scraped_dt = datetime.fromisoformat(s)
             if scraped_dt.tzinfo is not None:
                 scraped_dt = scraped_dt.replace(tzinfo=None)

@@ -811,7 +811,12 @@ def parse_relative_date(date_str, retention_days):
         # standard ISO parsing
         # Remove trailing Z if present for python < 3.11 compatibility
         s = date_str.rstrip('Z')
+        s = re.sub(r'([+-]\d{2})(\d{2})$', r'\1:\2', s)
         parsed = datetime.fromisoformat(s)
+        if parsed.tzinfo is not None:
+            # Convert to UTC and strip tzinfo so we only append Z
+            from datetime import timezone
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
         return date_str, (parsed + timedelta(days=retention_days)).isoformat() + 'Z'
     except ValueError:
         pass
