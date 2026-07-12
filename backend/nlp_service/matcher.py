@@ -272,8 +272,13 @@ def match_for_user_internal(user):
 
     print(f"Found {len(all_matches)} matches for user {email}")
 
+    # Fetch degraded companies for errors
+    cursor.execute("SELECT name, degraded_reason FROM companies WHERE status = 'degraded'")
+    degraded = cursor.fetchall()
+    errors = [{"name": r["name"], "reason": r["degraded_reason"]} for r in degraded]
+
     # Dispatch email
-    sent = email_sender.send_job_digest(email, all_matches, user_yoe)
+    sent = email_sender.send_job_digest(email, all_matches, user_yoe, errors)
 
     if sent:
         now_iso = datetime.utcnow().isoformat() + 'Z'

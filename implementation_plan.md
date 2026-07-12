@@ -1,5 +1,10 @@
 # AI Job Scraper App — Implementation Plan (v8 — GitHub Actions Workflow Integration)
 
+## Phase 5: Configuration & Error Reporting (Completed)
+- Extracted hardcoded company list to `backend/companies_config.json`.
+- Updated `db_init.py` to sync configuration to `jobs.db` on run.
+- Updated `matcher.py` and `email_sender.py` to fetch and embed scraper errors into email digests.
+
 ## Phase 4: GitHub Actions Workflow Integration
 
 This phase outlines the integration of a GitHub Actions workflow to automate the scraping, matching, and emailing processes.
@@ -128,8 +133,8 @@ A backend-only, email-notification-driven job scraping and matching system for *
 
 | Setting | Value |
 |---|---|
-| Companies | **11** (NVIDIA, Google, Arista, Cisco, Qualcomm, AMD, Broadcom, Intel, Microsoft, IBM, Ericsson) |
-| Match Threshold | **65%** cosine similarity |
+| Companies | **25** (NVIDIA, Google, Meta, Microsoft, Apple, Amazon, AMD, Broadcom, Arista Networks, Qualcomm, Cloudflare, Cisco, ARM, Intel, Cerebras, Groq, Juniper, NetApp, HPE, Samsung Research, NXP, Ericsson, Nokia, Tenstorrent, Graphcore) |
+| Match Threshold | **30%** cosine similarity |
 | Data Retention | **3 days** (jobs AND matched_jobs) |
 | Resume Format | **PDF only** |
 | Authentication | **None** — email is the only identifier (personal/local use) |
@@ -154,7 +159,7 @@ A backend-only, email-notification-driven job scraping and matching system for *
 
 ---
 
-## Semantic Matching Architecture (HuggingFace)
+## Semantic Matching Architecture (Local Offline)
 
 ### Why Embeddings Over Jaccard
 
@@ -162,53 +167,55 @@ Jaccard requires exact string matches — `"Python"` vs `"python programming"` s
 
 ### Model
 
-**`sentence-transformers/all-MiniLM-L6-v2`** via HuggingFace free Inference API:
-- Free, no API key required
-- Returns 384-dimensional float vectors
-- Endpoint: `https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2`
-- Rate limit: ~10 req/min on free tier → handled by the embedding strategy below
+**`sentence-transformers/all-MiniLM-L6-v2`** via Local Python Execution:
+- 100% Free and Private, runs locally on your PC.
+- No API key required, zero network dependencies.
+- Returns 384-dimensional float vectors.
+- No rate limits (runs as fast as your CPU allows).
 
-### Embedding Strategy (Zero API Calls at Match Time)
+### Embedding Strategy (Optimized Chunking)
 
 ```
 RESUME UPLOAD:
-  1. Extract text from PDF (pdf-parse)
-  2. Call HuggingFace API → get 384-dim resume vector
-  3. Store vector as JSON blob in users.resume_vector (SQLite TEXT)
-  4. Done — no more API calls for this resume until re-upload
+  1. Extract text from PDF (PyPDF2)
+  2. Split resume into overlapping chunks (2000 chars, 200 char overlap)
+  3. Call local SentenceTransformer model → get 384-dim vector for each chunk
+  4. Average the vectors to create a single comprehensive resume vector
+  5. Store vector as JSON blob in users.resume_vector (SQLite TEXT)
 
 SCRAPE CYCLE (per new job):
   1. Acquire job data (Tier 2/3 pipeline)
-  2. jobId already in DB? → skip entirely (no embedding call)
-  3. Prepare embedding input: jobTitle + department + jobDescription (truncated to 512 tokens)
-  4. Call HuggingFace API → get 384-dim job vector
+  2. jobId already in DB? → skip entirely
+  3. Prepare embedding input: jobTitle + department + jobDescription
+  4. Call local SentenceTransformer model → get 384-dim job vector
   5. Store vector as JSON blob in jobs.embedding_vector
-  6. Extract skill keywords for email display (local vocab match — no API)
+  6. Extract skill keywords for email display (local vocab match)
 
-MATCH CYCLE (runs after scrape, NO API calls):
+MATCH CYCLE (runs after scrape):
   1. Load user.resume_vector from SQLite (pre-cached)
   2. Load all new jobs' embedding_vectors from SQLite (pre-cached)
-  3. Compute cosine similarity in-memory (pure math, instant)
-  4. Score >= 65% → record as match
+  3. Compute cosine similarity in-memory using Python numpy (instant)
+  4. Score >= 30% → record as match
 ```
 
 ### Rate Limit Management
 
-HuggingFace free tier: ~10 req/min.
-- 11 companies × ~20 new jobs each = ~220 new jobs per 6h cycle (worst case)
-- Scraping is sequential with 10s gaps between companies → jobs are processed one-by-one
-- A `p-queue` with concurrency=1 and `intervalCap=8, interval=60000` (8 embedding calls/min) ensures we never exceed the free limit
-- If HuggingFace returns 503 (model loading) → wait 20s, retry once → if still fails, store job without vector and re-try embedding on next cycle
+Because we run the model locally offline via PyTorch, there are no artificial API rate limits. Jobs are embedded sequentially as fast as the local CPU can process them.
 
 ### Cosine Similarity (in-memory, no library needed)
 
-```js
-function cosineSimilarity(vecA, vecB) {
-  const dot = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
-  const magA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
-  const magB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
-  return dot / (magA * magB); // returns -1 to 1, multiply by 100 for %
-}
+```python
+import numpy as np
+
+def compute_cosine_similarity(vec_a, vec_b):
+    a = np.array(vec_a)
+    b = np.array(vec_b)
+    dot_product = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return (dot_product / (norm_a * norm_b)) * 100
 ```
 
 ---
@@ -267,7 +274,12 @@ Publicly accessible REST API endpoint, respects standard rate-limits via `reques
 ```
 
 ### Tier 3 — Playwright HTML Scraper (fallback only)
-Used when Tier 2 fails. Single page, `slowMo: 200ms`, realistic viewport, honest User-Agent.
+Used when APIs or static HTML aren't viable due to advanced anti-bot protections, CSRF, or single-page React apps.
+- **Apple**: Loads `jobs.apple.com` via headless Chromium. Bypasses undocumented API tokens. Injects `AIJobScraperBot/1.0` User-Agent and runs JavaScript `page.evaluate()` to harvest DOM URLs.
+- **Google**: (Hybrid) Playwright loads `careers.google.com/jobs/results`, then standard Axios parses JSON-LD from individual pages.
+
+### Tier 4 — Specialty APIs (AshbyHQ, Greenhouse)
+- **Cerebras**: Fetches from `api.ashbyhq.com/posting-api/job-board/cerebras` natively.
 
 ---
 
@@ -301,22 +313,35 @@ HF API 503   → wait 20s, retry once, store job without vector if still fails
 
 ---
 
-## Company List
+## Company List (25 Companies)
 
-| # | Company | ATS | Tier | Career URL | Filter |
-|---|---|---|---|---|---|
-| 1 | **NVIDIA** | Workday | 2 — Workday JSON POST | `nvidia.wd5.myworkdayjobs.com` | India + Remote |
-| 2 | **Google** | Custom | 2/3 hybrid | `careers.google.com` | Engineering + India/Remote |
-| 3 | **Arista Networks** | SmartRecruiters | 2 — JSON-LD | `smartrecruiters.com/ArNetworks` | All public listings |
-| 4 | **Cisco Systems** | Avature | 2 — JSON-LD | `jobs.cisco.com` | All public listings |
-| 5 | **Qualcomm** | Workday | 2 — Workday JSON POST | `qualcomm.wd5.myworkdayjobs.com` | India + Remote |
-| 6 | **AMD** | iCIMS/Attract | 2 — GET JSON API | `careers.amd.com` | India |
-| 7 | **Broadcom** | Workday | 2 — Workday JSON POST | `broadcom.wd1.myworkdayjobs.com` | India + Remote |
-| 8 | **Intel** | Workday | 2 — Workday JSON POST | `intel.wd1.myworkdayjobs.com` | India + Remote |
-| 9 | **Microsoft** | Eightfold AI | 2 — JSON-LD | `jobs.careers.microsoft.com` | All public listings |
-| 10 | **IBM** | Kenexa BrassRing | 2 — JSON-LD | `ibm.com/careers` | India + Engineering/technical roles |
-| 11 | **Ericsson** | Eightfold AI | 2 — JSON-LD | `jobs.ericsson.com` | All public listings |
-| 12 | **Arm** | Custom HTML (Talentbrew) | 2 — HTML Scraper | `careers.arm.com` | India, UK, Europe |
+| # | Company | ATS | Tier | Career URL |
+|---|---|---|---|---|
+| 1 | **NVIDIA** | Workday | 2 | `nvidia.wd5.myworkdayjobs.com` |
+| 2 | **Google** | Custom | 3 | `careers.google.com` |
+| 3 | **Meta** | Unknown | 3 | `metacareers.com` |
+| 4 | **Microsoft** | Eightfold AI | 2 | `jobs.careers.microsoft.com` |
+| 5 | **Apple** | Playwright (Custom) | 3 | `jobs.apple.com` |
+| 6 | **Amazon (AWS)** | Unknown | 3 | `amazon.jobs` |
+| 7 | **AMD** | iCIMS/Attract | 2 | `careers.amd.com` |
+| 8 | **Broadcom** | Workday | 2 | `broadcom.wd1.myworkdayjobs.com` |
+| 9 | **Arista Networks** | SmartRecruiters | 2 | `jobs.smartrecruiters.com/AristaNetworks` |
+| 10 | **Qualcomm** | Eightfold AI | 2 | `careers.qualcomm.com` |
+| 11 | **Cloudflare** | Greenhouse | 4 | `careers.cloudflare.com` |
+| 12 | **Cisco** | Avature | 2 | `jobs.cisco.com` |
+| 13 | **ARM** | Custom HTML | 2 | `careers.arm.com` |
+| 14 | **Intel** | Workday | 2 | `intel.wd1.myworkdayjobs.com` |
+| 15 | **Cerebras Systems** | AshbyHQ | 4 | `cerebras.ai/careers` |
+| 16 | **Groq** | Unknown | 3 | `groq.com/careers` |
+| 17 | **Juniper Networks** | Workday | 2 | `careers.juniper.net` |
+| 18 | **NetApp** | Eightfold AI | 2 | `careers.netapp.com` |
+| 19 | **Hewlett Packard Enterprise** | Workday | 2 | `careers.hpe.com` |
+| 20 | **Samsung Research** | Unknown | 3 | `research.samsung.com/careers` |
+| 21 | **NXP Semiconductors** | Workday | 2 | `careers.nxp.com` |
+| 22 | **Ericsson** | Eightfold AI | 2 | `jobs.ericsson.com` |
+| 23 | **Nokia** | Unknown | 3 | `careers.nokia.com` |
+| 24 | **Tenstorrent** | Unknown | 3 | `tenstorrent.com/careers` |
+| 25 | **Graphcore** | Unknown | 3 | `graphcore.ai/careers` |
 
 
 ---
@@ -350,7 +375,7 @@ HF API 503   → wait 20s, retry once, store job without vector if still fails
 │  ┌──────────────────▼──────────────────────┐ │
 │  │   Match Engine (cosine similarity)        │ │
 │  │   resume_vector ↔ job embedding_vector   │ │
-│  │   threshold: 65% · zero API calls        │ │
+│  │   threshold: 30% · zero API calls        │ │
 │  └──────────────────┬──────────────────────┘ │
 │                     │ matches                 │
 │  ┌──────────────────▼────────┐ ┌───────────┐ │
@@ -724,7 +749,7 @@ HF_API_KEY=
 
 # App settings
 PORT=3000
-MATCH_THRESHOLD=65
+MATCH_THRESHOLD=30
 DATA_RETENTION_DAYS=3
 SCRAPE_INTERVAL_HOURS=6
 USER_YOE=4

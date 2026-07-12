@@ -1,0 +1,380 @@
+[
+  {
+    "name": "NVIDIA",
+    "ats": "workday",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite",
+    "filters": {
+      "locations": [
+        "India",
+        "Remote",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Sweden",
+        "Switzerland",
+        "Ireland",
+        "Italy",
+        "Spain"
+      ],
+      "searchText": "",
+      "limit": 20
+    }
+  },
+  {
+    "name": "Google",
+    "ats": "playwright",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://www.google.com/about/careers/applications/jobs",
+    "filters": {}
+  },
+  {
+    "name": "Meta",
+    "ats": "unknown",
+    "tier": 3,
+    "enabled": false,
+    "careerUrl": "https://www.metacareers.com/jobs",
+    "filters": {}
+  },
+  {
+    "name": "Microsoft",
+    "ats": "eightfold",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://careers.microsoft.com",
+    "filters": {
+      "locations": [
+        "India",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Ireland",
+        "Italy",
+        "Spain",
+        "Sweden",
+        "Switzerland"
+      ],
+      "query": ""
+    }
+  },
+  {
+    "name": "Apple",
+    "ats": "apple",
+    "tier": 1,
+    "enabled": true,
+    "careerUrl": "https://jobs.apple.com/",
+    "filters": {
+      "location": "India"
+    }
+  },
+  {
+    "name": "Amazon (AWS)",
+    "ats": "unknown",
+    "tier": 3,
+    "enabled": false,
+    "careerUrl": "https://amazon.jobs/",
+    "filters": {}
+  },
+  {
+    "name": "AMD",
+    "ats": "amd",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://careers.amd.com/careers-home/jobs",
+    "filters": {
+      "locations": [
+        "India",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Ireland",
+        "Italy",
+        "Spain",
+        "Sweden",
+        "Switzerland"
+      ],
+      "keywords": ""
+    }
+  },
+  {
+    "name": "Broadcom",
+    "ats": "workday",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://broadcom.wd1.myworkdayjobs.com/External_Career",
+    "filters": {
+      "locations": [
+        "India",
+        "Remote",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Sweden",
+        "Switzerland",
+        "Ireland",
+        "Italy",
+        "Spain"
+      ],
+      "searchText": "",
+      "limit": 20
+    }
+  },
+  {
+    "name": "Arista Networks",
+    "ats": "smartrecruiters",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://jobs.smartrecruiters.com/AristaNetworks",
+    "filters": {
+      "countries": [
+        "in",
+        "gb",
+        "de",
+        "fr",
+        "pl",
+        "nl",
+        "ie",
+        "it",
+        "es",
+        "se",
+        "ch"
+      ]
+    }
+  },
+  {
+    "name": "Qualcomm",
+    "ats": "eightfold",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://careers.qualcomm.com",
+    "filters": {
+      "locations": [
+        "India",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Ireland",
+        "Italy",
+        "Spain",
+        "Sweden",
+        "Switzerland"
+      ],
+      "query": ""
+    }
+  },
+  {
+    "name": "Cloudflare",
+    "ats": "greenhouse",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://careers.cloudflare.com/jobs/",
+    "filters": {},
+    "board_token": "cloudflare"
+  },
+  {
+    "name": "Cisco",
+    "ats": "cisco",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://careers.cisco.com/global/en/search-results",
+    "filters": {
+      "keywords": "engineer",
+      "locations": [
+        "India",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Ireland",
+        "Italy",
+        "Spain",
+        "Sweden",
+        "Switzerland"
+      ]
+    }
+  },
+  {
+    "name": "ARM",
+    "ats": "arm",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://careers.arm.com",
+    "filters": {
+      "locations": [
+        "India",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Ireland",
+        "Italy",
+        "Spain",
+        "Sweden",
+        "Switzerland"
+      ]
+    }
+  },
+  {
+    "name": "Intel",
+    "ats": "workday",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://intel.wd1.myworkdayjobs.com/en-US/External",
+    "filters": {
+      "locations": [
+        "India",
+        "Remote",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Sweden",
+        "Switzerland",
+        "Ireland",
+        "Italy",
+        "Spain"
+      ],
+      "searchText": "",
+      "limit": 20
+    }
+  },
+  {
+    "name": "Cerebras Systems",
+    "ats": "ashbyhq",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://cerebras.ai/careers",
+    "filters": {},
+    "board_token": "cerebras"
+  },
+  {
+    "name": "Groq",
+    "ats": "unknown",
+    "tier": 3,
+    "enabled": false,
+    "careerUrl": "https://groq.com/careers/",
+    "filters": {}
+  },
+  {
+    "name": "Juniper Networks",
+    "ats": "workday",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://careers.juniper.net/",
+    "filters": {}
+  },
+  {
+    "name": "NetApp",
+    "ats": "eightfold_v2",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://careers.netapp.com/",
+    "filters": {},
+    "eightfoldBaseUrl": "https://careers.netapp.com",
+    "eightfoldDomain": "netapp.com"
+  },
+  {
+    "name": "Hewlett Packard Enterprise",
+    "ats": "workday",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://careers.hpe.com/",
+    "filters": {}
+  },
+  {
+    "name": "Samsung Research",
+    "ats": "workday",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://sec.wd3.myworkdayjobs.com/Samsung_Careers",
+    "filters": {
+      "locations": [
+        "India",
+        "Remote",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Sweden",
+        "Switzerland",
+        "Ireland",
+        "Italy",
+        "Spain"
+      ],
+      "searchText": "",
+      "limit": 20
+    }
+  },
+  {
+    "name": "NXP Semiconductors",
+    "ats": "workday",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://careers.nxp.com/",
+    "filters": {}
+  },
+  {
+    "name": "Ericsson",
+    "ats": "eightfold",
+    "tier": 2,
+    "enabled": true,
+    "careerUrl": "https://jobs.ericsson.com",
+    "filters": {
+      "locations": [
+        "India",
+        "United Kingdom",
+        "Germany",
+        "France",
+        "Poland",
+        "Netherlands",
+        "Ireland",
+        "Italy",
+        "Spain",
+        "Sweden",
+        "Switzerland"
+      ],
+      "query": ""
+    }
+  },
+  {
+    "name": "Nokia",
+    "ats": "unknown",
+    "tier": 3,
+    "enabled": false,
+    "careerUrl": "https://careers.nokia.com/",
+    "filters": {}
+  },
+  {
+    "name": "Tenstorrent",
+    "ats": "unknown",
+    "tier": 3,
+    "enabled": false,
+    "careerUrl": "https://tenstorrent.com/careers",
+    "filters": {}
+  },
+  {
+    "name": "Graphcore",
+    "ats": "greenhouse",
+    "tier": 3,
+    "enabled": true,
+    "careerUrl": "https://www.graphcore.ai/careers",
+    "filters": {},
+    "board_token": "graphcore"
+  }
+]

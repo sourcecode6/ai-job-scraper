@@ -46,6 +46,7 @@ AI-Job-Scraper/
 │   │   ├── email_sender.py      # SMTP-based HTML email digest engine
 │   │   ├── import_resume.py     # Offline/Online PDF resume parser script
 │   │   └── requirements.txt     # Python package dependencies
+│   ├── companies_config.json    # User-editable list of active companies
 │   ├── .env                     # Environment variables (Credentials & config)
 │   └── setup.bat                # Windows setup and launch script
 └── Saurabh_Surashe.pdf          # User's PDF resume in workspace root
@@ -72,7 +73,7 @@ Tracks registered user profiles, resume vectors, extracted skills, and configura
 ### 3.2. `companies`
 Lists tracked employers, ATS portals, scraped records, and degradation tracking.
 - `name` (TEXT, PRIMARY KEY): Unique company identifier (e.g., "AMD", "NVIDIA").
-- `ats` (TEXT): Portal type (e.g., "workday", "smartrecruiters", "cisco", "eightfold", "amd", "ibm", "arm").
+- `ats` (TEXT): Portal type (e.g., "workday", "smartrecruiters", "cisco", "eightfold", "eightfold_v2", "greenhouse", "amd", "ibm", "arm").
 - `tier` (INTEGER): Priority level for scraping.
 - `career_url` (TEXT): URL to the career home page.
 - `status` (TEXT): Status flags (`active`, `degraded`).
@@ -129,9 +130,11 @@ Deduplicates matches and records notification dispatch histories.
   2. **Cleanup Loop**: Runs daily at 2:00 AM, purging expired records from the database.
 
 ### 4.2. Multi-ATS Scraper Engine (`scraper.py`)
-- Iterates over active companies.
-- Respects `robots.txt` rules for each site.
-- Directly invokes native site API endpoints (JSON REST services) to retrieve jobs, avoiding heavy headless browser instances (Playwright/Selenium).
+- Acts as a dynamic orchestrator that iterates over active companies.
+- Instead of housing all scraping logic, it imports specific, highly-modular ATS adapters from the `backend/nlp_service/adapters/` directory (e.g., `workday.py`, `eightfold_v2.py`, `greenhouse.py`).
+- Respects `robots.txt` rules and rate limits for each site via centralized `utils.py` helpers.
+- **Fault Tolerance**: Safely catches network timeouts, HTTP errors, or `robots.txt` blocks to gracefully exit the specific company's extraction function without crashing the global loop, ensuring pipeline resilience.
+- Directly invokes native site API endpoints (JSON REST services) to retrieve jobs, avoiding heavy headless browser instances.
 - For each job posting, it extracts matching skills from `skills_vocab.json` using word boundary regex patterns, parses the YoE requirements, and calculates vector representations using SentenceTransformers.
 - **Programmatic Filtering**: For custom HTML-scraped portals like ARM, the scraper reads the configured company location filters (e.g., India, UK, Europe) and filters the scraped jobs programmatically in Python since the portal does not support standard URL query parameters for these filters.
 

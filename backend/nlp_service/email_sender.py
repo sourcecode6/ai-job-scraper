@@ -36,7 +36,7 @@ def format_posted_date(posted_date):
         # Fallback to string as-is
         return posted_date
 
-def send_job_digest(to_email, matches, user_yoe):
+def send_job_digest(to_email, matches, user_yoe, errors=None):
     email_user = os.environ.get('EMAIL_USER')
     email_pass = os.environ.get('EMAIL_PASS')
 
@@ -47,8 +47,8 @@ def send_job_digest(to_email, matches, user_yoe):
     date_str = datetime.now().strftime('%B %d, %Y')
     subject = f"🎯 {len(matches)} New Job Match{'es' if len(matches) > 1 else ''} — {date_str}"
 
-    html = build_email_html(matches, date_str, user_yoe)
-    text = build_email_text(matches, date_str, user_yoe)
+    html = build_email_html(matches, date_str, user_yoe, errors)
+    text = build_email_text(matches, date_str, user_yoe, errors)
 
     try:
         msg = MIMEMultipart('alternative')
@@ -70,7 +70,7 @@ def send_job_digest(to_email, matches, user_yoe):
         print(f"Failed to send email digest to {to_email}: {e}")
         return False
 
-def build_email_html(matches, date_str, user_yoe):
+def build_email_html(matches, date_str, user_yoe, errors=None):
     cards = []
     for m in matches:
         score = m.get('match_score') or m.get('matchScore') or 0
@@ -152,6 +152,21 @@ def build_email_html(matches, date_str, user_yoe):
 
     cards_html = "\n".join(cards)
     
+    errors_html = ""
+    if errors:
+        error_items = "".join([
+            f"<div style='margin-bottom:8px;'><strong>{e['name']}:</strong> <span style='color:#ef4444;'>{e['reason']}</span></div>"
+            for e in errors
+        ])
+        errors_html = f"""
+        <div style="background:#450a0a;border:1px solid #dc2626;border-radius:12px;padding:20px;margin-bottom:24px;">
+            <h2 style="color:#fca5a5;font-size:18px;margin:0 0 12px;">⚠️ Scraper Errors/Warnings</h2>
+            <div style="font-size:14px;color:#f87171;">
+                {error_items}
+            </div>
+        </div>
+        """
+
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -167,6 +182,8 @@ def build_email_html(matches, date_str, user_yoe):
       <p style="color:#64748b;margin:0;font-size:14px;">{date_str}</p>
     </div>
 
+    {errors_html}
+
     <!-- Job Cards -->
     {cards_html}
 
@@ -181,8 +198,16 @@ def build_email_html(matches, date_str, user_yoe):
 </html>
 """
 
-def build_email_text(matches, date_str, user_yoe):
+def build_email_text(matches, date_str, user_yoe, errors=None):
     lines = [f"🎯 {len(matches)} New Job Matches — {date_str}", ""]
+    
+    if errors:
+        lines.append("⚠️ Scraper Errors/Warnings:")
+        for e in errors:
+            lines.append(f"- {e['name']}: {e['reason']}")
+        lines.append("")
+        lines.append("─" * 50)
+        lines.append("")
     for m in matches:
         score = m.get('match_score') or m.get('matchScore') or 0
         title = m.get('job_title') or m.get('jobTitle') or 'Unknown Title'

@@ -35,6 +35,19 @@ backend\setup.bat
 
 ---
 
+## Managing Companies (`companies_config.json`)
+
+To enable or disable specific companies without modifying code or restarting the server:
+1. Open `backend/companies_config.json`.
+2. Toggle the `"enabled"` field to `true` or `false` for any company.
+3. Sync the changes to the database by running:
+   ```bash
+   python backend/nlp_service/db_init.py
+   ```
+4. The running backend will automatically pick up the updated list on its next scheduled cycle.
+
+---
+
 ## API Reference (use curl or Postman)
 
 ### 1. Upload your Resume
@@ -104,6 +117,11 @@ curl -X POST "http://localhost:3000/api/admin/activate?company=NVIDIA"
 | Microsoft | Eightfold AI pcsx API | India | ~200 |
 | IBM | IBM Search API | India / Software Engineering | ~362 |
 | Ericsson | Eightfold AI pcsx API | India | ~121 |
+| Cloudflare | Greenhouse API | India | TBD |
+| NetApp | Eightfold AI v2 API | India | TBD |
+| Hewlett Packard Enterprise | Workday JSON POST | India + Remote | TBD |
+| Juniper Networks | Workday JSON POST | India + Remote | TBD |
+| NXP Semiconductors | Workday JSON POST | India + Remote | TBD |
 
 ---
 

@@ -3,119 +3,15 @@ import json
 import sqlite3
 from datetime import datetime
 
-DEFAULT_COMPANIES = [
-    {
-        'name': 'NVIDIA',
-        'ats': 'workday',
-        'tier': 2,
-        'careerUrl': 'https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite',
-        'filters': {
-            'locations': ['India', 'Remote', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Sweden', 'Switzerland', 'Ireland', 'Italy', 'Spain'],
-            'searchText': '',
-            'limit': 20,
-        }
-    },
-    {
-        'name': 'Arista Networks',
-        'ats': 'smartrecruiters',
-        'tier': 2,
-        'careerUrl': 'https://jobs.smartrecruiters.com/AristaNetworks',
-        'filters': {
-            'countries': ['in', 'gb', 'de', 'fr', 'pl', 'nl', 'ie', 'it', 'es', 'se', 'ch']
-        }
-    },
-    {
-        'name': 'Cisco Systems',
-        'ats': 'cisco',
-        'tier': 2,
-        'careerUrl': 'https://careers.cisco.com/global/en/search-results',
-        'filters': {
-            'keywords': 'engineer',
-            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
-        }
-    },
-    {
-        'name': 'Qualcomm',
-        'ats': 'eightfold',
-        'tier': 2,
-        'careerUrl': 'https://careers.qualcomm.com',
-        'filters': {
-            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
-            'query': '',
-        }
-    },
-    {
-        'name': 'AMD',
-        'ats': 'amd',
-        'tier': 2,
-        'careerUrl': 'https://careers.amd.com/careers-home/jobs',
-        'filters': {
-            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
-            'keywords': '',
-        }
-    },
-    {
-        'name': 'Broadcom',
-        'ats': 'workday',
-        'tier': 2,
-        'careerUrl': 'https://broadcom.wd1.myworkdayjobs.com/External_Career',
-        'filters': {
-            'locations': ['India', 'Remote', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Sweden', 'Switzerland', 'Ireland', 'Italy', 'Spain'],
-            'searchText': '',
-            'limit': 20,
-        }
-    },
-    {
-        'name': 'Intel',
-        'ats': 'workday',
-        'tier': 2,
-        'careerUrl': 'https://intel.wd1.myworkdayjobs.com/en-US/External',
-        'filters': {
-            'locations': ['India', 'Remote', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Sweden', 'Switzerland', 'Ireland', 'Italy', 'Spain'],
-            'searchText': '',
-            'limit': 20,
-        }
-    },
-    {
-        'name': 'Microsoft',
-        'ats': 'eightfold',
-        'tier': 2,
-        'careerUrl': 'https://careers.microsoft.com',
-        'filters': {
-            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
-            'query': '',
-        }
-    },
-    {
-        'name': 'IBM',
-        'ats': 'ibm',
-        'tier': 2,
-        'careerUrl': 'https://careers.ibm.com/careers/search',
-        'filters': {
-            'countries': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
-            'category': 'Software Engineering',
-        }
-    },
-    {
-        'name': 'Ericsson',
-        'ats': 'eightfold',
-        'tier': 2,
-        'careerUrl': 'https://jobs.ericsson.com',
-        'filters': {
-            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
-            'query': '',
-        }
-    },
-    {
-        'name': 'Arm',
-        'ats': 'arm',
-        'tier': 2,
-        'careerUrl': 'https://careers.arm.com',
-        'filters': {
-            'locations': ['India', 'United Kingdom', 'Germany', 'France', 'Poland', 'Netherlands', 'Ireland', 'Italy', 'Spain', 'Sweden', 'Switzerland'],
-        }
-    }
-]
+def load_companies_config():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.abspath(os.path.join(current_dir, '..', 'companies_config.json'))
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading companies_config.json: {e}")
+        return []
 
 def get_db_path():
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -217,17 +113,20 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_matched_notified ON matched_jobs(notified)")
 
     # Seed companies
-    for c in DEFAULT_COMPANIES:
+    companies_config = load_companies_config()
+    for c in companies_config:
+        status = 'active' if c.get('enabled', True) else 'inactive'
         cursor.execute("""
             INSERT INTO companies (name, ats, tier, career_url, filters, status)
-            VALUES (?, ?, ?, ?, ?, 'active')
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(name) DO UPDATE SET
               ats = excluded.ats,
               tier = excluded.tier,
               career_url = excluded.career_url,
-              filters = excluded.filters
+              filters = excluded.filters,
+              status = excluded.status
         """, (
-            c['name'], c['ats'], c['tier'], c['careerUrl'], json.dumps(c['filters'])
+            c['name'], c['ats'], c['tier'], c['careerUrl'], json.dumps(c.get('filters', {})), status
         ))
 
     conn.commit()
