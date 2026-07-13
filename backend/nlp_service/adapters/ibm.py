@@ -67,8 +67,8 @@ def scrape_ibm(company, filters):
                 "postedDate": datetime.utcnow().isoformat() + 'Z',
                 "employmentType": work_mode,
                 "jobDescription": src.get('description', ''),
-                "url": src.get('url') or company['careerUrl'],
-                "applyUrl": src.get('url') or company['careerUrl']
+                "url": src.get('url') or company['career_url'],
+                "applyUrl": src.get('url') or company['career_url']
             })
 
         from_offset += len(hits)

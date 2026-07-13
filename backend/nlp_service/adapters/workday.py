@@ -38,7 +38,7 @@ def scrape_workday(company, filters):
             if ext_path.startswith('/job/'):
                 ext_path = f"/en-US/{site}{ext_path}"
             base_url = f"https://{subdomain}.myworkdayjobs.com"
-            job_url = f"{base_url}{ext_path}" if ext_path else company['careerUrl']
+            job_url = f"{base_url}{ext_path}" if ext_path else company['career_url']
 
             jobs.append({
                 "companyName": company['name'],

@@ -6,11 +6,11 @@ This document provides a detailed overview of the system architecture, file layo
 
 ## 1. System Architecture Overview
 
-The system is designed as a lightweight, high-performance, single-process web application built entirely on Python. It utilizes **FastAPI** as the API gateway and web server, **SentenceTransformers** for semantic embeddings, **NumPy** for vector arithmetic, and **SQLite** for relational storage.
+The system is designed as a lightweight, high-performance application built entirely on Python. It can run as either a persistent **FastAPI** web server or a serverless pipeline via **GitHub Actions**. It utilizes **SentenceTransformers** for semantic embeddings, **NumPy** for vector arithmetic, and **SQLite** for relational storage.
 
 ```mermaid
 graph TD
-    Client[Client / Curl / Frontend] -->|REST API| Gateway[FastAPI Web Server]
+    Client[Client / Curl / Frontend] -->|REST API| Gateway[FastAPI Web Server / Pipeline]
     Gateway -->|Read/Write| DB[(SQLite Database)]
     Gateway -->|Background Task| Scraper[Job Scraper Engine]
     Gateway -->|Background Task| Matcher[NumPy Semantic Match Engine]
@@ -122,12 +122,16 @@ Deduplicates matches and records notification dispatch histories.
 
 ## 4. Key Application Engines
 
-### 4.1. The Web Server Gateway (`app.py`)
-- Exposes REST API endpoints.
-- Runs background execution pools (`FastAPI.BackgroundTasks` or `asyncio` loop executors) for tasks like scraping and matching, keeping responses non-blocking.
-- Implements two background loops on startup:
-  1. **Scraping Loop**: Runs every 6 hours (configurable via `SCRAPE_INTERVAL_HOURS`), scraping active companies and running matching cycles immediately after.
-  2. **Cleanup Loop**: Runs daily at 2:00 AM, purging expired records from the database.
+### 4.1. Execution Gateways (`app.py` & `workflow_runner.py`)
+- **FastAPI Web Server (`app.py`)**:
+  - Exposes REST API endpoints.
+  - Runs background execution pools for tasks like scraping and matching, keeping responses non-blocking.
+  - Implements two background loops on startup:
+    1. **Scraping Loop**: Runs every 6 hours (configurable via `SCRAPE_INTERVAL_HOURS`).
+    2. **Cleanup Loop**: Runs daily at 2:00 AM, purging expired records from the database.
+- **Serverless Pipeline (`workflow_runner.py`)**:
+  - Executes the full data pipeline (init, import, scrape, match, cleanup) sequentially in a single pass without booting a web server.
+  - Designed specifically for automated chron execution via GitHub Actions.
 
 ### 4.2. Multi-ATS Scraper Engine (`scraper.py`)
 - Acts as a dynamic orchestrator that iterates over active companies.
@@ -160,17 +164,14 @@ Deduplicates matches and records notification dispatch histories.
 sequenceDiagram
     participant User
     participant import_resume.py
-    participant API as FastAPI Gateway
+    participant Model as SentenceTransformers
     participant DB as SQLite DB
     
     User->>import_resume.py: Run setup.bat / import
-    import_resume.py->>API: POST /api/resume/upload
-    API->>API: Read PDF bytes & Extract text
-    API->>API: Generate float vector using SentenceTransformers
-    API->>API: Extract skill tokens matching vocabulary
-    API->>DB: Write profile to `users` & Clear old matches
-    API->>API: Add match task to BackgroundTasks
-    API-->>import_resume.py: Return success JSON
+    import_resume.py->>import_resume.py: Read PDF bytes & Extract text
+    import_resume.py->>Model: Generate float vector
+    import_resume.py->>import_resume.py: Extract skill tokens matching vocabulary
+    import_resume.py->>DB: Write profile to `users` & Clear old matches
     import_resume.py-->>User: Console success message
 ```
 

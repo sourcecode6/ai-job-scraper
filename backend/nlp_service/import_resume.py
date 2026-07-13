@@ -79,27 +79,8 @@ def main():
         
     print(f"\nFound resume PDF: {os.path.basename(resume_path)} at {resume_path}")
     print(f"Processing resume for {email}...")
-    
-    url = "http://127.0.0.1:3000/api/resume/upload"
-    try:
-        # 1. Attempt to upload via running FastAPI server
-        with open(resume_path, 'rb') as f:
-            files = {'file': (os.path.basename(resume_path), f, 'application/pdf')}
-            data = {'email': email}
-            response = requests.post(url, data=data, files=files, timeout=15)
-            
-        if response.status_code == 200:
-            result = response.json()
-            skills = result.get('resumeSkills', []) or result.get('skillsExtracted', [])
-            print("Resume processed successfully via running FastAPI server!")
-            print(f"   Skills Extracted ({len(skills)}): {', '.join(skills)}")
-            return
-        else:
-            print(f"Server returned error: {response.text}. Falling back to direct database insertion...")
-    except Exception:
-        print("FastAPI server is not running. Falling back to direct database insertion...")
 
-    # 2. Offline Fallback: Extract, Embed, and Write directly to SQLite
+    # Extract, Embed, and Write directly to SQLite
     try:
         import time
         from pypdf import PdfReader
@@ -153,13 +134,12 @@ def main():
             
         embed_duration_ms = int((time.time() - start_embed_time) * 1000)
         
-        # Log resume embedding events
         log_nlp_event(
             message="Resume embedding",
             event="resume_upload",
             extra={
                 "email": email,
-                "huggingFaceStatus": "success",
+                "localModelStatus": "success",
                 "vectorDimensions": 384,
                 "durationMs": embed_duration_ms
             }

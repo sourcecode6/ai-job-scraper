@@ -313,27 +313,44 @@ COMPANY_CONFIGS = {
 # Custom HTTP rate-limited queue simulation
 GLOBAL_LAST_REQUEST_TIME = 0.0
 
-def queue_http(url, method='GET', **kwargs):
+def queue_http(url, method='GET', max_retries=3, **kwargs):
     global GLOBAL_LAST_REQUEST_TIME
     settings = load_settings()
     delay_sec = settings['globalRequestDelayMs'] / 1000.0
 
-    # Enforce global rate-limit gap
-    elapsed = time.time() - GLOBAL_LAST_REQUEST_TIME
-    if elapsed < delay_sec:
-        time.sleep(delay_sec - elapsed)
-
     kwargs.setdefault('headers', HEADERS)
     kwargs.setdefault('timeout', 15)
-
-    try:
-        if method.upper() == 'POST':
-            response = requests.post(url, **kwargs)
-        else:
-            response = requests.get(url, **kwargs)
-        GLOBAL_LAST_REQUEST_TIME = time.time()
-        return response
-    except Exception as e:
-        GLOBAL_LAST_REQUEST_TIME = time.time()
-        raise e
+    
+    attempt = 0
+    while attempt < max_retries:
+        attempt += 1
+        # Enforce global rate-limit gap
+        elapsed = time.time() - GLOBAL_LAST_REQUEST_TIME
+        if elapsed < delay_sec:
+            time.sleep(delay_sec - elapsed)
+            
+        try:
+            if method.upper() == 'POST':
+                response = requests.post(url, **kwargs)
+            else:
+                response = requests.get(url, **kwargs)
+                
+            GLOBAL_LAST_REQUEST_TIME = time.time()
+            
+            if response.status_code == 429:
+                log_scrape_info(f"Rate limited (429) on {url}. Retrying... ({attempt}/{max_retries})")
+                time.sleep(delay_sec * attempt * 2) # Exponential backoff
+                continue
+                
+            return response
+            
+        except requests.exceptions.RequestException as e:
+            GLOBAL_LAST_REQUEST_TIME = time.time()
+            if attempt < max_retries:
+                log_scrape_info(f"Network error on {url}: {e}. Retrying... ({attempt}/{max_retries})")
+                time.sleep(delay_sec * attempt)
+                continue
+            raise e
+            
+    raise Exception(f"Max retries ({max_retries}) exceeded for {url}")
 

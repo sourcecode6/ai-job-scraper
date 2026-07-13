@@ -116,16 +116,16 @@ We are migrating the heavy computational and NLP workloads from Node.js to speci
 
 ## Overview
 
-A backend-only, email-notification-driven job scraping and matching system for **personal use**, running entirely on a local Windows PC:
+A backend-only, email-notification-driven job scraping and matching system for **personal use**, running entirely on a local Windows PC or via GitHub Actions:
 
-- **Backend**: Node.js + Express REST API with scheduled data acquisition, semantic skill matching, and email notifications
+- **Backend**: Python workflow scripts with scheduled data acquisition, semantic skill matching, and email notifications
 - **Database**: SQLite (single `jobs.db` file — zero setup, no server)
-- **Data Acquisition**: Legal-first, 3-tier approach with full ethical scraping compliance
-- **NLP / Matching**: HuggingFace free Inference API for semantic embeddings + cosine similarity
+- **Data Acquisition**: Legal-first, modular Python adapters (Requests, BeautifulSoup, Playwright)
+- **NLP / Matching**: Local PyTorch offline SentenceTransformer for semantic embeddings + numpy cosine similarity
 - **UI**: **Email-only** — no web dashboard, no mobile app
-- **Email**: Nodemailer + Gmail SMTP (App Password)
-- **Scheduler**: node-cron — scrape on startup + every 6 hours, daily cleanup at 2 AM
-- **Setup**: `setup.bat` one-command Windows script + `README.md`
+- **Email**: Python `smtplib` + Gmail SMTP (App Password)
+- **Scheduler**: GitHub Actions Workflow (cron) — scrape every 6 hours and auto-commit db
+- **Setup**: `setup.bat` local execution script + `README.md`
 
 ---
 
@@ -290,19 +290,18 @@ Used when APIs or static HTML aren't viable due to advanced anti-bot protections
 - Workday endpoint companies → robots.txt of `myworkdayjobs.com` is checked (not company domain, since the API call goes there)
 
 ### Rate Limiting
-- Global: max 1 HTTP request per 3 seconds (`p-queue`, concurrency=1)
+- Global: max 1 HTTP request per 3 seconds (`time.sleep`)
 - Between companies: 10s gap
-- HuggingFace embedding calls: max 8/min (`p-queue` with intervalCap)
+- **Note:** Because the local offline PyTorch model is used for embeddings, there are zero NLP API rate limits. 
 
 ### Error Handling
-```
+```text
 HTTP 200     → process normally
 HTTP 429     → log "rate limited", skip company this cycle
 HTTP 403/401 → log "access denied", mark company status='degraded', skip next 3 cycles
 HTTP 404     → log "endpoint gone", mark status='degraded', manual review needed
 HTTP 5xx     → log "server error", retry once after 30s, then skip
 Network err  → log "connection failed", skip this cycle
-HF API 503   → wait 20s, retry once, store job without vector if still fails
 ```
 
 **Degraded company behavior:**
@@ -350,21 +349,18 @@ HF API 503   → wait 20s, retry once, store job without vector if still fails
 
 ```
 ┌─────────────────────────────────────────────┐
-│             Node.js + Express Backend         │
+│             Python Automation Workflow        │
 │                                               │
 │  ┌─────────────────────────────────────────┐ │
-│  │   Data Acquisition Pipeline              │ │
-│  │   Workday JSON POST (5 companies)        │ │
-│  │   JSON-LD Cheerio  (5 companies)         │ │
-│  │   Playwright hybrid (Google)             │ │
-│  │   robots.txt checker + p-queue throttle  │ │
+│  │   Data Acquisition Pipeline (Python)     │ │
+│  │   13 Adapters (Workday, Eightfold, etc.) │ │
+│  │   robots.txt checker + global throttle   │ │
 │  └──────────────────┬──────────────────────┘ │
 │                     │ new jobs                │
 │  ┌──────────────────▼──────────────────────┐ │
-│  │   HuggingFace Embedding Service          │ │
-│  │   POST all-MiniLM-L6-v2                  │ │
+│  │   Local SentenceTransformer Model        │ │
+│  │   all-MiniLM-L6-v2 (offline PyTorch)     │ │
 │  │   → 384-dim vector per job               │ │
-│  │   Rate-limited: 8 calls/min              │ │
 │  └──────────────────┬──────────────────────┘ │
 │                     │ vectors                 │
 │  ┌──────────────────▼──────────────────────┐ │
@@ -373,25 +369,21 @@ HF API 503   → wait 20s, retry once, store job without vector if still fails
 │  └──────────────────┬──────────────────────┘ │
 │                     │                         │
 │  ┌──────────────────▼──────────────────────┐ │
-│  │   Match Engine (cosine similarity)        │ │
+│  │   Match Engine (Python Numpy)             │ │
 │  │   resume_vector ↔ job embedding_vector   │ │
-│  │   threshold: 30% · zero API calls        │ │
+│  │   threshold: 30% · instant memory array  │ │
 │  └──────────────────┬──────────────────────┘ │
 │                     │ matches                 │
 │  ┌──────────────────▼────────┐ ┌───────────┐ │
-│  │  node-cron Scheduler       │ │ Nodemailer│ │
-│  │  Startup + every 6h        │ │ Gmail SMTP│ │
-│  │  Daily cleanup at 2 AM     │ └───────────┘ │
-│  └────────────────────────────┘               │
+│  │  GitHub Actions Cron       │ │ Python SMTP │ │
+│  │  Every 6 hours             │ │ Email Digest│ │
+│  └────────────────────────────┘ └───────────┘ │
 │                                               │
 │  ┌─────────────────────────────────────────┐ │
-│  │  Observability Logs (logs/ directory)    │ │
-│  │  scrape.log · error.log · nlp.log        │ │
+│  │  Observability Logs                      │ │
+│  │  Uploaded as GitHub Workflow Artifacts   │ │
 │  └─────────────────────────────────────────┘ │
 └─────────────────────────────────────────────┘
-
-  ↑ REST API (for resume upload + config only)
-  └── curl / Postman (no frontend)
 
   ↓ Email digest → Gmail inbox
 ```
@@ -400,51 +392,28 @@ HF API 503   → wait 20s, retry once, store job without vector if still fails
 
 ## Project Structure
 
-```
+```text
 Agent1/
+├── .github/
+│   └── workflows/
+│       └── scrape_and_match.yml       # GitHub Actions Cron
 ├── backend/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── db.js                  # SQLite init + schema migration
-│   │   │   ├── companies.js           # 11 companies config (tier, URL, filters)
-│   │   │   └── settings.js            # .env loader + constants
-│   │   ├── db/
-│   │   │   └── schema.sql             # SQLite CREATE TABLE statements
-│   │   ├── acquisition/
-│   │   │   ├── index.js               # Orchestrator: selects tier per company
-│   │   │   ├── robotsChecker.js       # robots.txt fetch + parse (cache per cycle)
-│   │   │   ├── requestQueue.js        # p-queue: global 1req/3s + HF 8req/min
-│   │   │   ├── workday.js             # Workday internal JSON POST client
-│   │   │   ├── jsonld.js              # Cheerio JSON-LD extractor
-│   │   │   └── playwright.js          # Ethical Playwright scraper (Google + fallback)
-│   │   ├── services/
-│   │   │   ├── embeddingService.js    # HuggingFace API calls + retry logic
-│   │   │   ├── resumeService.js       # PDF → text (pdf-parse) → embedding
-│   │   │   ├── matchService.js        # Cosine similarity, threshold filter
-│   │   │   ├── emailService.js        # Nodemailer HTML digest + retry logic
-│   │   │   └── cleanupService.js      # DELETE expired jobs + matched_jobs
-│   │   ├── routes/
-│   │   │   ├── resume.js              # POST /api/resume/upload
-│   │   │   ├── users.js               # POST /api/users  GET /api/users?email=X
-│   │   │   ├── companies.js           # GET /api/companies
-│   │   │   └── admin.js               # POST /api/admin/scrape  GET /api/admin/status
-│   │   ├── schedulers/
-│   │   │   └── index.js               # Startup scrape + 6h cron + 2am cleanup
-│   │   ├── logger.js                  # Winston logger → logs/ directory
-│   │   └── app.js                     # Express entry point
+│   ├── nlp_service/
+│   │   ├── adapters/                  # Python Scraper Adapters
+│   │   │   ├── amd.py, apple.py, workday.py, eightfold.py, etc.
+│   │   ├── workflow_runner.py         # Main execution pipeline
+│   │   ├── scraper.py                 # Core scraping orchestrator
+│   │   ├── utils.py                   # Shared helper functions & validation
+│   │   ├── matcher.py                 # Numpy Cosine Similarity match logic
+│   │   ├── email_sender.py            # SMTP HTML digest generator
+│   │   ├── db_init.py                 # SQLite migration & config seeding
+│   │   └── requirements.txt           # Python dependencies
+│   ├── companies_config.json          # 25 companies config list
 │   ├── data/
 │   │   ├── jobs.db                    # SQLite database
-│   │   └── skills_vocab.json          # 500+ skills for email display tags only
-│   ├── logs/
-│   │   ├── scrape.log                 # Per-company scrape results
-│   │   ├── error.log                  # HTTP errors, degraded companies
-│   │   └── nlp.log                    # Embedding quality + skill extraction
-│   ├── uploads/                       # Temp PDF (deleted after parse)
-│   ├── .env.example
-│   ├── .env                           # Created by setup.bat
-│   ├── setup.bat                      # One-command Windows setup script
-│   ├── README.md
-│   └── package.json
+│   │   └── skills_vocab.json          # Dictionary for skill extraction
+│   └── setup.bat                      # Windows local setup
+└── README.md
 ```
 
 ---
@@ -532,69 +501,64 @@ CREATE INDEX idx_matched_notified ON matched_jobs(notified);
 
 ---
 
-## Scheduler Behavior
+## Pipeline Behavior
 
-### On Startup (runs immediately when `npm start` executes)
-```
-1. Initialize SQLite schema (CREATE TABLE IF NOT EXISTS)
-2. Seed companies table from companies.js config
-3. Trigger full scrape cycle immediately (regardless of lastScrapedAt)
-4. Register 6h cron for subsequent cycles
-5. Register 2am daily cleanup cron
-```
+The entire system runs sequentially as a single pipeline whenever `workflow_runner.py` is triggered (either manually locally, or via the 6-hour GitHub Actions cron). However, if you are running the system via the local `app.py` FastAPI server, a dedicated asynchronous loop triggers a separate cleanup cycle daily at 2 AM.
 
-### Every 6 Hours: Scrape + Embed + Match + Notify
-```
-For each company (sequentially, 10s gap, skip if status='degraded'):
-  1. Check robots.txt (cache result for this cycle)
-  2. Call acquisition tier → get raw job list
-  3. For each job:
-     a. UNIQUE(company_name, job_id) conflict? → skip
-     b. INSERT job with embedding_status='pending'
-     c. Queue HuggingFace embedding call (rate-limited)
-     d. On success: UPDATE embedding_vector, embedding_status='done'
-     e. On failure after retry: embedding_status='failed' (matched next cycle)
-  4. UPDATE companies.last_scraped_at = now
-
-Embedding retry sweep (after all companies):
-  - SELECT jobs WHERE embedding_status='failed' AND scraped_at > now-3days
-  - Re-attempt HuggingFace call for each
-  - Update status accordingly
-
-For each registered user:
-  5. SELECT jobs WHERE:
-       company_name IN user.selected_companies
-       AND scraped_at > user.last_notified_at
-       AND embedding_status = 'done'
-  6. Load user.resume_vector from SQLite
-  7. For each job: cosine_similarity(resume_vector, embedding_vector) × 100
-  8. Filter: score >= user.match_threshold
-             AND NOT EXISTS in matched_jobs for this user+job
-  9. INSERT into matched_jobs (notified=0) for each match
-  10. If any matches: attempt email send
-      → Success: UPDATE matched_jobs SET notified=1, notified_at=now
-                 UPDATE users.last_notified_at=now
-      → Failure:  leave notified=0, log error, retry next cycle
-                  (jobs are NOT marked notified — will retry)
-```
-
-### Daily at 2 AM: Cleanup
+### Daily at 2 AM: Local Cleanup Loop (app.py only)
 ```sql
-DELETE FROM jobs         WHERE expires_at < datetime('now');
-DELETE FROM matched_jobs WHERE expires_at < datetime('now');
+-- Deletes jobs that have aged past the DATA_RETENTION_DAYS boundary
+DELETE FROM jobs WHERE datetime(expires_at) < datetime('now');
+DELETE FROM matched_jobs WHERE datetime(expires_at) < datetime('now');
 ```
 
-### On Resume Re-Upload
+### Pipeline Execution (workflow_runner.py)
+```text
+1. Initialize Database
+   - Initialize SQLite schema (CREATE TABLE IF NOT EXISTS)
+   - Seed/sync companies table from companies_config.json
+
+2. Import / Process Resume
+   - Look for PDF files in `backend/uploads/`
+   - Extract text → Call Local PyTorch Model → store resume_vector
+   - Delete PDF file to protect privacy
+
+3. Data Acquisition (Scrape)
+   - For each company (sequentially, respect crawl-delay, skip if degraded):
+     a. Check robots.txt (cache result for this cycle)
+     b. Call specific Python adapter → get raw job list
+     c. For each job:
+        - UNIQUE(company_name, job_id) conflict? → skip
+        - Call Local PyTorch Model → get embedding_vector (instant)
+        - INSERT job with embedding_status='done'
+     d. UPDATE companies.last_scraped_at = now
+
+4. Match & Notify
+   - For each registered user:
+     a. SELECT jobs WHERE scraped_at > user.last_notified_at
+     b. Load user.resume_vector from SQLite
+     c. For each job: numpy cosine_similarity(resume_vector, embedding_vector) × 100
+     d. Filter: score >= user.match_threshold AND NOT EXISTS in matched_jobs
+     e. INSERT into matched_jobs (notified=0) for each match
+     f. Attempt email send via smtplib
+        → Success: UPDATE matched_jobs SET notified=notified+1
+        → Failure: leave as is, will retry next cycle
+
+5. Cleanup Phase
+   - Runs at the end of the pipeline execution (or at 2 AM via app.py background loop)
+   - Executes the SQL DELETE routines to drop expired jobs/matched_jobs based on DATA_RETENTION_DAYS.
 ```
+
+### On Resume Re-Upload (During Pipeline Initialization)
+```text
 1. Extract text from PDF
-2. Call HuggingFace → get resume_vector
+2. Call Local PyTorch Model → get resume_vector
 3. Extract display skills (local vocab)
 4. UPDATE users SET resume_text, resume_vector, resume_skills, resume_uploaded_at
 5. DELETE FROM matched_jobs
    WHERE email = user.email
-   AND expires_at > datetime('now')    ← only clear still-valid entries
-6. Re-run match cycle immediately for this user against all jobs with embedding_status='done'
-7. Send fresh email digest if any new matches found
+   AND datetime(expires_at) > datetime('now')    ← only clear still-valid entries
+6. Match cycle will run normally at step 5 of the pipeline.
 ```
 
 ---
@@ -619,7 +583,7 @@ These pending (unsent) matches are **included in the next email digest**, effect
 
 ## Observability — Log Files
 
-All logs written via **Winston** to `backend/logs/`:
+All logs written via standard Python **logging** to `backend/logs/`:
 
 ### `scrape.log`
 ```json
@@ -653,7 +617,7 @@ All logs written via **Winston** to `backend/logs/`:
   "email": "user@gmail.com",
   "skillsExtracted": ["Python", "Docker", "AWS", "React"],
   "vectorDimensions": 384,
-  "huggingFaceStatus": "success",
+  "localModelStatus": "success",
   "durationMs": 1230
 }
 ```
@@ -691,18 +655,33 @@ Next check: ~6 hours from now.
 
 ---
 
-## API Endpoints (curl / Postman only — no frontend)
+## Execution Modes & API
+
+The system provides two execution methods: a serverless pipeline, and a persistent background API server.
+
+### 1. Serverless Pipeline (Recommended for GitHub Actions)
+Runs the entire process synchronously from start to finish.
+| Mode | Command | Description |
+|---|---|---|
+| **Local Terminal** | `python backend/nlp_service/workflow_runner.py` | Runs the full pipeline manually |
+| **GitHub Actions** | `.github/workflows/scrape_and_match.yml` | Scheduled cron execution every 6 hours |
+
+### 2. FastAPI Background Server (Local PC)
+Runs a persistent local server (`python backend/nlp_service/app.py`) at `http://127.0.0.1:3000` with background scrape/cleanup loops and REST endpoints.
 
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/resume/upload` | Upload PDF → extract text → get embedding → store |
-| `POST` | `/api/users` | Create/update user (email + company selection + threshold) |
-| `GET` | `/api/users?email=X` | Get user profile + resume skills |
+| `POST` | `/api/users` | Create/update user profile |
+| `GET` | `/api/users` | Get user profile + resume skills |
 | `GET` | `/api/companies` | List all companies + status |
-| `GET` | `/api/admin/status` | Scheduler status, last run times, pending embeddings |
-| `POST` | `/api/admin/scrape` | Manually trigger full scrape cycle |
-| `POST` | `/api/admin/match?email=X` | Manually trigger match + email for one user |
-| `POST` | `/api/admin/activate?company=X` | Set company status back to 'active' |
+| `GET` | `/api/jobs` | View scraped jobs |
+| `GET` | `/api/matches` | View matched jobs |
+| `GET` | `/api/admin/status` | System status, last run times, background loops |
+| `POST` | `/api/admin/scrape` | Manually trigger full scrape cycle in background |
+| `POST` | `/api/admin/match` | Manually trigger match + email cycle in background |
+| `POST` | `/api/admin/cleanup` | Manually trigger database cleanup |
+| `POST` | `/api/admin/activate` | Set company status back to 'active' |
 
 ---
 
@@ -713,27 +692,28 @@ Next check: ~6 hours from now.
 echo === AI Job Scraper Setup ===
 
 echo Installing dependencies...
-cd backend
-npm install
+cd backend/nlp_service
+pip install -r requirements.txt
+cd ../..
 
 echo Creating .env from template...
-if not exist .env (
-  copy .env.example .env
+if not exist backend\.env (
+  copy backend\.env.example backend\.env
   echo  → .env created. Please fill in EMAIL_USER and EMAIL_PASS.
 ) else (
   echo  → .env already exists, skipping.
 )
 
 echo Creating data directory...
-if not exist data mkdir data
+if not exist backend\data mkdir backend\data
 
 echo Creating logs directory...
-if not exist logs mkdir logs
+if not exist backend\logs mkdir backend\logs
 
 echo.
 echo Setup complete!
 echo  1. Edit backend\.env with your Gmail credentials
-echo  2. Run: cd backend ^& npm start
+echo  2. Run: python backend/nlp_service/workflow_runner.py
 echo.
 pause
 ```
@@ -744,14 +724,9 @@ pause
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=your_16_char_app_password
 
-# HuggingFace (no key needed for free Inference API — leave blank)
-HF_API_KEY=
-
 # App settings
-PORT=3000
 MATCH_THRESHOLD=30
 DATA_RETENTION_DAYS=3
-SCRAPE_INTERVAL_HOURS=6
 USER_YOE=4
 
 # Your email (where digests are sent)
@@ -764,34 +739,33 @@ NOTIFY_EMAIL=your_email@gmail.com
 
 | Layer | Technology | Reason |
 |---|---|---|
-| Backend | Node.js + Express | Fast, great npm ecosystem |
-| Database | SQLite (`better-sqlite3`) | Zero server, single file, perfect for personal use |
-| Data Acquisition | Axios + Cheerio + Playwright | Tier 2 (lightweight HTTP), Tier 3 (JS render fallback) |
-| robots.txt | `robots-parser` | Parse Disallow + Crawl-delay |
-| Rate Limiting | `p-queue` | Concurrency + interval caps for both HTTP and HF API |
-| Embeddings | HuggingFace free Inference API | Free, no key, semantic understanding |
-| PDF Parsing | `pdf-parse` | Lightweight, no external deps |
-| Similarity | Pure JS cosine similarity | No library needed, instant in-memory |
-| Email | Nodemailer (Gmail SMTP) | Free, no third-party service |
-| Logging | Winston | Structured JSON logs to files |
-| Scheduler | `node-cron` | In-process, no Redis/queue needed |
+| Backend | Python 3.10+ | Robust, great data science ecosystem |
+| Database | SQLite (`sqlite3`) | Zero server, single file, perfect for personal use |
+| Data Acquisition | `requests` + `beautifulsoup4` + `playwright` | Modular parsing and JS render fallback |
+| robots.txt | `urllib.robotparser` | Built-in Python library for compliance |
+| Rate Limiting | `time.sleep` | Simple, sequential processing without queue overhead |
+| Embeddings | `sentence-transformers` | Free, local, offline PyTorch semantic understanding |
+| PDF Parsing | `PyPDF2` | Lightweight local extraction |
+| Similarity | `numpy` cosine similarity | High-speed array operations |
+| Email | `smtplib` (Gmail SMTP) | Built-in Python library, free delivery |
+| Logging | `logging` | Standard Python logging to files |
+| Scheduler | GitHub Actions | Zero-maintenance cron execution on the cloud |
 | Setup | `setup.bat` + `README.md` | One-command Windows setup |
 
 ---
 
 ## Verification Plan
 
-1. Run `setup.bat` → confirm `node_modules`, `data/`, `logs/` created
+1. Run `setup.bat` → confirm `data/` and `logs/` created
 2. Fill in `.env` with Gmail App Password
-3. `npm start` → confirm startup scrape triggers, logs appear in `logs/scrape.log`
-4. `GET /api/admin/status` → all 11 companies shown, `lastScrapedAt` populated
-5. `POST /api/resume/upload` with a PDF → confirm skills and vector stored in DB
-6. `POST /api/users` with email + company selections
-7. `POST /api/admin/match?email=X` → confirm email received in Gmail inbox
-8. Repeat step 7 → confirm **same jobs not re-sent** (deduplication via `notified=1`)
+3. Run `python backend/nlp_service/workflow_runner.py`
+4. Confirm logs appear in `backend/logs/scraper.log`
+5. Place a resume PDF (e.g. `resume.pdf`) inside `backend/uploads/`
+6. Re-run `workflow_runner.py` → confirm skills and vector stored in DB
+7. Confirm email received in Gmail inbox
+8. Repeat step 6 → confirm **same jobs not re-sent** (deduplication via `notified=1`)
 9. Simulate email failure: wrong SMTP password → confirm `notified=0` persists, re-sent next cycle
-10. Manually set `expires_at` to past in SQLite → run cleanup → confirm rows deleted
-11. Re-upload resume → confirm `matched_jobs` (within 3-day window) cleared → fresh match email arrives
+10. Manually set `expires_at` to past in SQLite → run pipeline → confirm rows deleted
 
 ---
 
@@ -803,123 +777,3 @@ NOTIFY_EMAIL=your_email@gmail.com
 > 2. **Google Playwright stability**: careers.google.com may require specific wait-for-selector logic that needs tuning against the live page.
 > 3. **IBM filtering**: `ibm.com/careers` is filtered by **countries=[India, UK, Germany, France, etc.]** and **category=Engineering/Technical** at fetch time — this significantly reduces volume to a manageable set per cycle.
 
----
-
-## Issues Resolved / Retrospective
-
-### 1. Partial Resume Scanning due to Character Truncation
-* **Issue**: The embedding model only checked the skills/summary section at the top of the resume and missed keywords/skills in later project or experience sections.
-* **Cause**: `getEmbedding` in `embeddingService.js` truncated the resume to 2000 characters to avoid model input sequence limits.
-* **Resolution**: Replaced truncation with an overlapping chunking algorithm. The text is split into chunks of 2000 characters with 200 character overlap. Each chunk is embedded separately using the local SentenceTransformer model, and the resulting vectors are averaged and re-normalized.
-
-### 2. Missing Tech Keywords & Regex Boundary Limitations
-* **Issue**: Skills containing special characters (like `C++`, `L2/L3`, etc.) and telecommunication/low-level debugging terms (like `NB-IoT`, `4G`, `Real-Time Systems`, `NTN`, `GDB`, `SQL`, `VTune`, and `MAC Scheduler`) were not extracted.
-* **Cause**:
-  1. Standard regex word boundaries (`\b`) do not work on terms ending/starting with non-alphanumeric characters (like `++` or `/`).
-  2. The terms were missing from `skills_vocab.json`.
-  3. Extracted display skills were capped at 20.
-* **Resolution**:
-  1. Updated `nlpService.js` to use custom lookahead and lookbehind assertions (`(?<![a-zA-Z0-9_])` and `(?![a-zA-Z0-9_])`) to match word boundaries correctly for both word and non-word characters.
-  2. Added the missing skills and aliases to `skills_vocab.json`.
-  3. Increased the displayed skills cap to 40.
-
-### 3. Artificial Rate-Limiting Throttling for Local Offline Embeddings
-* **Issue**: Job embedding generation suffered from major delays (a 60-second delay/pause occurred after every 8 embedded jobs).
-* **Cause**: `requestQueue.js` still enforced the old Hugging Face free API tier rate limit (capping at 8 calls per 60 seconds) even though the project was upgraded to use a local, offline SentenceTransformer model (`@xenova/transformers`).
-* **Resolution**: Removed the `interval` and `intervalCap` constraints from the `embeddingQueue` in `requestQueue.js`, keeping only sequential concurrency (`concurrency: 1`) to run local embeddings as fast as possible without causing CPU usage spikes.
-
-### 4. Broken Workday URLs & Lack of Job ID in Emails
-* **Issue**:
-  1. Scraped Workday job URLs returned 404 or redirected because they lacked the `/en-US/{siteName}` prefix (Workday requires the site prefix to load the correct layout).
-  2. It was hard to search for jobs directly without their Job ID displayed in the email digest.
-* **Resolution**:
-  1. Updated `normalizeWorkdayJob` in [workday.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/acquisition/workday.js) to detect if `externalPath` starts with `/job/` and prepend it with `/en-US/${company.workdaySite}`.
-  2. Updated [emailService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/emailService.js) to display the Job ID badge next to the company name in the HTML layout, and inside parentheses in the text-only layout.
-
-### 5. Match Threshold Changes in .env Ignored
-* **Issue**: Changing `MATCH_THRESHOLD` in `.env` did not affect matching because the user's profile in the database defaulted to `65` (which was overriding the environment setting).
-* **Cause**: `matchService.js` prioritized the user's database `match_threshold` column over the global `settings.matchThreshold` config value.
-* **Resolution**: Updated [matchService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/matchService.js) to always use the global `settings.matchThreshold` config (derived directly from `.env`), serving as the single source of truth for the local personal job tracker.
-
-### 6. Matching Cycle Ignoring Existing Active Jobs
-* **Issue**: Changing user settings (like lowering `MATCH_THRESHOLD` or uploading a new resume) did not match older, existing jobs in the database.
-* **Cause**: The matching query in `matchService.js` had a `scraped_at > user.last_notified_at` constraint. Once `last_notified_at` was updated after a successful run, older jobs were permanently ignored in subsequent matching cycles.
-* **Resolution**: Removed the `scraped_at > user.last_notified_at` constraint from the matching SQL query. The query now pulls all unexpired jobs (`expires_at > datetime('now')`), and duplicate prevention is correctly managed via deduplication checks on the `matched_jobs` table.
-
-### 7. Relative Date Formatting Bug in Email Digests
-* **Issue**: NVIDIA jobs did not display their posted dates in the email digest.
-* **Cause**: NVIDIA stores relative date strings (like `"Posted Today"` or `"Posted Yesterday"`). The email generator was trying to parse these using JS `Date` objects, resulting in `"Invalid Date"`.
-* **Resolution**: Added a `formatPostedDate` helper in [emailService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/emailService.js) to detect and skip parsing for relative strings, outputting them directly in the template.
-
-### 8. Jobs Older than DATA_RETENTION_DAYS Getting Matched
-* **Issue**: Jobs posted weeks ago (like Arista jobs from May) were still getting matched even though the `DATA_RETENTION_DAYS` limit was set to 3.
-* **Cause**:
-  1. The expiration date (`expires_at`) was set based on the `scraped_at` timestamp (`scraped_at + DATA_RETENTION_DAYS`) rather than the actual job creation/posted date.
-  2. There was no age verification during the matching cycle.
-* **Resolution**:
-  1. Updated `matchService.js` to run an in-memory age check (`isJobWithinRetention`) parsing absolute/relative dates against the user's `DATA_RETENTION_DAYS`.
-  2. Updated `processJob` in `index.js` to calculate `expires_at` based on the actual job `posted_date` so that older jobs expire instantly and are cleaned up.
-
-### 9. Sort Matches by Country (India First, then UK/Europe, then Remote, then others) and Match Percentage
-* **Issue**: It was hard to find the best match because the jobs in the email were in arbitrary database order.
-* **Resolution**: Added sorting logic in `matcher.py` to order matches first by location priority (India: Rank 0, UK/Europe: Rank 1, Remote: Rank 2, Others: Rank 3) and then by match score in descending order before sending them to the email generator.
-
-### 10. Removed Skills Cap from Database and Logging Layers
-* **Issue**: Recognized skill tags in the database and execution logs were truncated to a maximum of 40 elements, preventing a full historic record of extracted technologies.
-* **Cause**: `nlpService.js` applied a `.slice(0, 40)` limit on the canonical skills array returned from `extractSkills`.
-* **Resolution**: Removed the `.slice(0, 40)` cap in `nlpService.js` to allow database tables (`jobs.skills_display`) and system logs to persist the full set of extracted keywords, while leaving the compact slicing logic (e.g. top 8) intact in `emailService.js` to keep email layout cards clean.
-
-### 11. Fixed AMD Career Link and Scraper
-* **Issue**: AMD's career site scraper was failing with 404 or 422 errors because their Workday tenant was decommissioned.
-* **Cause**: AMD migrated to a new Attract/iCIMS portal at `careers.amd.com`.
-* **Resolution**:
-  1. Identified the new public job search API endpoint: `GET https://careers.amd.com/api/jobs`.
-  2. Implemented a new custom scraper module [amd.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/acquisition/amd.js) supporting query filters and offset pagination via the new endpoint.
-  3. Registered the new scraper in the orchestrator [index.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/acquisition/index.js) and updated the company definition in [companies.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/config/companies.js).
-  4. Verified the new scraper successfully fetched 225 active jobs from the live AMD career site.
-
-### 12. Experience Match Indicator in Email Digests
-* **Issue**: When a user met or exceeded the required Years of Experience (YoE) for a job, no positive visual indicator was rendered in the email digest layout.
-* **Cause**: The email card template only evaluated the negative case (`requiredYoe > userYoe`) to show a warning badge.
-* **Resolution**: Updated [emailService.js](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/src/services/emailService.js) to render a green `✅ Experience Match` badge in HTML (and text representation) when the required YoE is less than or equal to the user's configured YoE.
-
-### 13. Log Timestamp Serialization Order
-* **Issue**: The `"timestamp"` key in the JSON log entries of `error.log`, `nlp.log`, and `scrape.log` was serialized at the end of the line, making it hard to read and parse chronological entries.
-* **Cause**: Python dictionary insertion order placed newly added fields (like timestamp) at the end.
-* **Resolution**: Updated `write_log()` in [logger.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/logger.py) to explicitly reconstruct the logging dictionary with `"timestamp"` inserted as the first key.
-
-### 14. CPU Waste Skipping Arista Networks
-* **Issue**: When `ALLOW_ARISTA_BYPASS=false` (default), the scraper would still execute a full initialization phase and evaluate robots.txt files for Arista Networks on every cycle, wasting CPU and network resources.
-* **Resolution**: Implemented an early exit inside `scrape_company()` in [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py) that detects Arista Networks and skips it immediately if `ALLOW_ARISTA_BYPASS` evaluates to false.
-
-### 15. Port Conflicts on Restarting setup.bat
-* **Issue**: Running `setup.bat` multiple times would fail to start the FastAPI server due to `EADDRINUSE` port conflicts since the previous python Uvicorn instance was still listening on the port.
-* **Resolution**: Added port-parsing logic to [setup.bat](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/setup.bat) to extract the active `PORT` from `.env` (defaulting to 3000) and automatically run `taskkill` to terminate any process listening on that port before launching setup or starting uvicorn. Standardized the loop command (`netstat -aon | findstr :%TARGET_PORT% | findstr LISTENING`) and removed parentheses inside the `for` loop body to avoid Command Prompt parser syntax breaks.
-
-### 16. Python stdout buffering in background execution
-* **Issue**: When `setup.bat` launched the FastAPI server process in the background, Python output buffering prevented Uvicorn startup logs from being written to the task log file immediately, making verification of startup status difficult.
-* **Resolution**: Added the `-u` (unbuffered) flag to the Python execution command inside [setup.bat](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/setup.bat) so that all logs flush to standard output immediately.
-
-### 17. Location Filtering for ARM
-* **Issue**: ARM's HTML scraper was retrieving all global job postings without applying any region/location filtering.
-* **Resolution**: Added the standard list of location filters (India, UK, and European countries) to ARM's database initialization profile in [db_init.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/db_init.py) and updated the `scrape_arm` function in [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py) to filter out jobs whose scraped location details do not match these criteria.
-
-### 18. Infinite Loop Bug in Eightfold and AMD Scrapers
-* **Issue**: The scraper workflow would hang/get stuck indefinitely after processing Cisco Systems.
-* **Cause**: In both `scrape_eightfold()` and `scrape_amd()` within [scraper.py](file:///c:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service/scraper.py), the `while True:` loop only indented the query parameter definition block, while the actual HTTP request, parsing logic, pagination increment, and break assertions were placed outside the `while True:` loop. This caused the loop to execute infinitely without ever calling the network or advancing.
-* **Resolution**: Corrected the indentation of the entire network fetching, parsing, and pagination logic inside `scrape_eightfold()` and `scrape_amd()` to place them inside the `while True:` loop.
-
-### 19. Relative Date Parsing Bug for plus signs (e.g. 15+ days ago)
-* **Issue**: Jobs posted weeks ago (e.g., "15+ days ago" on Workday) were matching the current day and getting emailed.
-* **Cause**: The relative date regex in `parse_relative_date` (`scraper.py`) and `is_job_within_retention` (`matcher.py`) did not expect a `+` symbol (like `15+ days ago` or `2+ weeks ago`). This caused the parser to fall back to `0` days ago (today), assigning a future `expires_at` date.
-* **Resolution**: Updated the regexes to allow an optional `+` symbol (e.g. `r'(\d+)\+?\s+days?\s+ago'`), enabling correct parsing of relative ages.
-
-### 20. SQLite Datetime Comparison Format Mismatch
-* **Issue**: Expired jobs were not being cleaned up by daily cleanup, and expired jobs were still matched and emailed.
-* **Cause**: Dates are stored in SQLite as text. Python saved `expires_at` in ISO format (with 'T' and 'Z'), while SQLite's `datetime('now')` returned space-separated formats (without 'T'/'Z'). Since character `'T'` is lexicographically greater than `' '`, direct string comparisons failed.
-* **Resolution**: Wrapped the `expires_at` column references in SQLite's `datetime()` function (e.g. `datetime(expires_at) > datetime('now')`) across `matcher.py` and `scraper.py` queries.
-
-### 21. Missing Age Checks on Pending Matches
-* **Issue**: Changing the `DATA_RETENTION_DAYS` limit (e.g. from 15 to 3) in `.env` did not stop previously matched jobs from being sent again in future email digests if their stored expiration date was set using the old limit.
-* **Cause**: The query for `pending_matches` in `matcher.py` did not check the age of the job using the current retention settings, relying solely on `expires_at`.
-* **Resolution**: Updated the query to `LEFT JOIN` the `jobs` table to retrieve `posted_date` and `scraped_at`, then ran `is_job_within_retention` on all pending matches to filter them against the active retention limit.
