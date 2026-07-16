@@ -1,5 +1,12 @@
 # Issues Resolved / Retrospective
 
+## Version 9.0 (Database Size & Push Issue)
+
+### 27. GitHub Push Failure: SQLite Database Size Exceeding 100 MB Limit
+* **Issue**: The GitHub Actions runner failed to commit and push the updated database (`backend/data/jobs.db`) back to the repository, throwing a pre-receive hook error: `File backend/data/jobs.db is 102.*** MB; this exceeds GitHub's file size limit of 100.00 MB`.
+* **Cause**: Standard SQLite deletes (`DELETE FROM jobs` and `DELETE FROM matched_jobs` in the daily cleanup routine) only mark pages as free for reuse but do not release the storage back to the file system. As a result, the database file grew indefinitely on the runner as new jobs were fetched, exceeding 100 MB.
+* **Resolution**: Updated `run_cleanup()` in `scraper.py` to run a `VACUUM` command right after committing the database deletions. This actively reclaims unused space and shrinks the database file size on disk down to the actual size of active jobs (~23.6 MB), staying well below GitHub's 100 MB limit.
+
 ## Version 8.0 (GitHub Actions Workflow Integration)
 
 ### 26. Scraper Resilience: Network Retries & Schema Keys

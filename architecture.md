@@ -227,3 +227,7 @@ posted_dt = datetime.fromisoformat(s)
 if posted_dt.tzinfo is not None:
     posted_dt = posted_dt.replace(tzinfo=None)
 ```
+
+### 6.3. Database Size Mitigation (VACUUM)
+Because standard SQL `DELETE` commands do not reclaim storage space on disk in SQLite, a database file can grow indefinitely over time. To keep the database size small and avoid exceeding GitHub's 100 MB file limit, the system executes `VACUUM` at the end of the `run_cleanup` cycle, reclaiming unused space and shrinking the file size down to the actual volume of current data.
+
