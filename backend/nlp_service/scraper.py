@@ -297,8 +297,12 @@ def run_cleanup():
         matched_deleted = cursor.rowcount
         
         conn.commit()
-        conn.close()
         print(f"Python daily cleanup complete: {jobs_deleted} jobs deleted, {matched_deleted} matched_jobs deleted")
+        
+        # Reclaim storage space and shrink database file size
+        print("Vacuuming database...")
+        cursor.execute("VACUUM")
+        conn.close()
     except Exception as e:
         print(f"Error in python daily cleanup: {e}")
 
