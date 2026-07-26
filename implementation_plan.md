@@ -1,4 +1,11 @@
-# AI Job Scraper App — Implementation Plan (v8 — GitHub Actions Workflow Integration)
+# AI Job Scraper App — Implementation Plan (v10 — Scraper Parallelization & DNS Mitigations)
+
+## Phase 6: Scraper Parallelization & DNS Mitigations (Completed)
+- **Parallel Scraper Orchestration:** Refactored `scraper.py` to run company acquisitions concurrently using a thread pool executor (`ThreadPoolExecutor`). Added configurable `MAX_CONCURRENT_COMPANIES` (default `3`).
+- **Concurrently Optimized Thread Locking:** Integrated a global `db_lock` around SQLite database transactions. Reorganized scraping steps so that the lock is released during network HTTP fetches and GPU/CPU-bound SentenceTransformer model embedding generation to prevent database locks and maximize speed.
+- **Deduplication & Unique Constraint Fix:** Resolved `UNIQUE constraint failed: jobs.company_name, jobs.job_id` errors by adding an in-memory `seen_job_ids` tracking set per scraper batch, and changing the database insert operation to use `INSERT OR IGNORE` combined with `cursor.rowcount` tracking.
+- **Windows DNS Lookup Fix:** Forced `urllib3`'s socket connection builder in `utils.py` to resolve only IPv4 addresses (`socket.AF_INET`), completely bypassing dual-stack IPv4/IPv6 lookup failures (`NameResolutionError`) on Windows for **Arm** and **IBM** portals.
+- **Scraper Auto-Recovery:** Updated the SQL scraper query to select status `IN ('active', 'degraded')` so that degraded scrapers will automatically retry on the next execution loop and recover their status to active.
 
 ## Phase 5: Configuration & Error Reporting (Completed)
 - Extracted hardcoded company list to `backend/companies_config.json`.

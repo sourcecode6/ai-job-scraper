@@ -5,10 +5,16 @@ import time
 import sqlite3
 import base64
 import urllib.robotparser
+import socket
+import urllib3.util.connection as connection
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 from logger import log_scrape_info, log_scrape_error, log_nlp_event
+
+# Force IPv4 to bypass getaddrinfo/NameResolutionError dual-stack DNS lookup failures on Windows
+connection.allowed_gai_family = lambda: socket.AF_INET
+
 
 
 # Global user agent

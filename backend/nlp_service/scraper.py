@@ -157,11 +157,18 @@ def scrape_company(company_row, model):
         # 1. Filter out duplicate jobs under lock
         db_path = get_db_path()
         new_jobs = []
+        seen_job_ids = set()
         with db_lock:
             conn = sqlite3.connect(db_path, timeout=30.0)
             cursor = conn.cursor()
             for job in raw_jobs:
-                cursor.execute("SELECT 1 FROM jobs WHERE company_name = ? AND job_id = ?", (name, job['jobId']))
+                jid = job['jobId']
+                if jid in seen_job_ids:
+                    skip_count += 1
+                    continue
+                seen_job_ids.add(jid)
+
+                cursor.execute("SELECT 1 FROM jobs WHERE company_name = ? AND job_id = ?", (name, jid))
                 if cursor.fetchone():
                     skip_count += 1
                 else:
@@ -230,7 +237,7 @@ def scrape_company(company_row, model):
             cursor = conn.cursor()
             for posted_date_str, expires_at_str, skills, yoe, title_vec_str, desc_vec_str, status, job in jobs_to_insert:
                 cursor.execute("""
-                    INSERT INTO jobs (
+                    INSERT OR IGNORE INTO jobs (
                         company_name, job_id, job_title, location, department,
                         posted_date, employment_type, job_description, url, apply_url,
                         skills_display, required_yoe, embedding_status, scraped_at, expires_at,
@@ -242,7 +249,7 @@ def scrape_company(company_row, model):
                     json.dumps(skills), yoe, status, datetime.utcnow().isoformat() + 'Z', expires_at_str,
                     title_vec_str, desc_vec_str, desc_vec_str
                 ))
-                new_count += 1
+                new_count += cursor.rowcount
 
             cursor.execute("UPDATE companies SET last_scraped_at = ?, status = 'active', degraded_reason = NULL WHERE name = ?", 
                            (datetime.utcnow().isoformat() + 'Z', name))
@@ -283,7 +290,7 @@ def run_acquisition_cycle(model):
     # Return dictionary rows
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM companies WHERE status = 'active'")
+    cursor.execute("SELECT * FROM companies WHERE status IN ('active', 'degraded')")
     companies = cursor.fetchall()
     conn.close()
 
@@ -324,4 +331,3 @@ def run_cleanup():
         conn.close()
     except Exception as e:
         print(f"Error in python daily cleanup: {e}")
-

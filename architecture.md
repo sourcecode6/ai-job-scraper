@@ -233,3 +233,17 @@ if posted_dt.tzinfo is not None:
 ### 6.3. Database Size Mitigation (VACUUM)
 Because standard SQL `DELETE` commands do not reclaim storage space on disk in SQLite, a database file can grow indefinitely over time. To keep the database size small and avoid exceeding GitHub's 100 MB file limit, the system executes `VACUUM` at the end of the `run_cleanup` cycle, reclaiming unused space and shrinking the file size down to the actual volume of current data.
 
+### 6.4. Dual-Stack DNS Resolution Mitigation (IPv4 Force)
+To prevent network lookup failures (`NameResolutionError` / `[Errno 11001] getaddrinfo failed`) commonly encountered on Windows environments resolving hostnames (like `careers.arm.com` or `www-api.ibm.com`) under dual-stack IPv4/IPv6 networks, the system overrides `urllib3`'s socket connection handler:
+```python
+connection.allowed_gai_family = lambda: socket.AF_INET
+```
+This forces all outgoing scraping requests to resolve exclusively using IPv4, bypassing Windows IPv6 lookup issues.
+
+### 6.5. Scraper Auto-Recovery
+To prevent temporary network/DNS errors from causing permanent failures, the scraper fetches both `active` and `degraded` companies during the acquisition cycle:
+```sql
+SELECT * FROM companies WHERE status IN ('active', 'degraded')
+```
+This enables degraded scrapers to automatically retry and recover their status to `active` on the next execution cycle rather than requiring manual admin reactivation.
+

@@ -2,6 +2,22 @@
 
 ## Version 10.0 (Scraper Parallelization)
 
+### 31. Degraded Companies Stuck in Permanent Failure State
+* **Issue**: If a company's scraper experienced a transient network error, it was marked as `degraded` in the database. Because the acquisition cycle only queried for status `= 'active'`, degraded companies were permanently skipped and never retried.
+* **Resolution**: Updated the database query in `run_acquisition_cycle()` to select companies where `status IN ('active', 'degraded')`, allowing degraded scrapers to auto-recover when issues resolve.
+
+### 30. Arm & IBM Scraper DNS Resolution Failures (`NameResolutionError`)
+* **Issue**: The Arm and IBM careers APIs regularly failed to resolve with `NameResolutionError` / `[Errno 11001] getaddrinfo failed` DNS lookup exceptions on Windows platforms.
+* **Cause**: Windows dual-stack (IPv4 and IPv6) DNS connection blips sometimes cause Python's `socket.getaddrinfo()` to fail on domains without IPv6 records or when local DNS servers misbehave.
+* **Resolution**: Patched `urllib3`'s socket hook in `utils.py` by overriding `connection.allowed_gai_family` to return `socket.AF_INET`. This forces `requests` to perform IPv4-only resolutions, bypassing dual-stack DNS lookup failures completely for both Arm and IBM.
+
+### 29. Qualcomm/Microsoft/Ericsson: SQLite UNIQUE Constraint Failures during Parallel Scraping
+* **Issue**: During parallel scraping runs, Qualcomm, Microsoft, and Ericsson threw `UNIQUE constraint failed: jobs.company_name, jobs.job_id` SQLite errors.
+* **Cause**: These career portal APIs sometimes return duplicate job postings in a single batch response. Because duplicate checks and database write-backs are split into separate lock-free operations to maximize embedding performance, these batch-internal duplicates bypassed the initial database existence checks, resulting in SQLite constraint collisions on bulk insertion.
+* **Resolution**:
+  - Added in-memory deduplication using a `seen_job_ids` tracking set within the scrapers before running database checks or embedding generation.
+  - Converted the database insertion query in `scraper.py` to use `INSERT OR IGNORE` and correctly tracked `new_count` by adding SQLite `cursor.rowcount`.
+
 ### 28. Sequential Scraping Performance Bottleneck
 * **Issue**: The job acquisition loop processed active companies one-by-one with a sequential 10-second delay between them. This made the full scraping cycle slow and resource-inefficient.
 * **Resolution**: 
