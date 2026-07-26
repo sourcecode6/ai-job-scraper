@@ -3,9 +3,15 @@ import time
 import re
 import json
 import sqlite3
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from utils import get_db_path, load_settings, extract_skills, extract_yoe, is_allowed, get_crawl_delay_ms, COMPANY_CONFIGS
 from logger import log_scrape_info, log_scrape_error, log_nlp_event
+
+# Thread lock for SQLite database writes/reads
+db_lock = threading.Lock()
+
 
 # Import adapters
 from adapters.workday import scrape_workday
@@ -148,22 +154,27 @@ def scrape_company(company_row, model):
         settings = load_settings()
         retention = settings['dataRetentionDays']
 
+        # 1. Filter out duplicate jobs under lock
         db_path = get_db_path()
-        conn = sqlite3.connect(db_path, timeout=30.0)
-        cursor = conn.cursor()
+        new_jobs = []
+        with db_lock:
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            cursor = conn.cursor()
+            for job in raw_jobs:
+                cursor.execute("SELECT 1 FROM jobs WHERE company_name = ? AND job_id = ?", (name, job['jobId']))
+                if cursor.fetchone():
+                    skip_count += 1
+                else:
+                    new_jobs.append(job)
+            conn.close()
 
-        for job in raw_jobs:
-            # Check duplicate
-            cursor.execute("SELECT 1 FROM jobs WHERE company_name = ? AND job_id = ?", (name, job['jobId']))
-            if cursor.fetchone():
-                skip_count += 1
-                continue
-
+        # 2. Extract features and generate embeddings (No lock here to avoid blocking other threads)
+        jobs_to_insert = []
+        for job in new_jobs:
             posted_date_str, expires_at_str = parse_relative_date(job['postedDate'], retention)
             skills = extract_skills(f"{job['jobTitle']} {job['department']} {job['jobDescription']}")
             yoe = extract_yoe(job['jobDescription'])
 
-            # Generate embeddings immediately if model is provided
             title_vec_str = None
             desc_vec_str = None
             status = 'pending'
@@ -211,26 +222,32 @@ def scrape_company(company_row, model):
                     log_scrape_error(f"[{name}] Embedding generation failed for job {job['jobId']}: {embed_err}")
                     status = 'failed'
 
-            cursor.execute("""
-                INSERT INTO jobs (
-                    company_name, job_id, job_title, location, department,
-                    posted_date, employment_type, job_description, url, apply_url,
-                    skills_display, required_yoe, embedding_status, scraped_at, expires_at,
-                    title_vector, description_vector, embedding_vector
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                name, job['jobId'], job['jobTitle'], job['location'], job['department'],
-                posted_date_str, job['employmentType'], job['jobDescription'], job['url'], job['applyUrl'],
-                json.dumps(skills), yoe, status, datetime.utcnow().isoformat() + 'Z', expires_at_str,
-                title_vec_str, desc_vec_str, desc_vec_str
-            ))
-            new_count += 1
+            jobs_to_insert.append((posted_date_str, expires_at_str, skills, yoe, title_vec_str, desc_vec_str, status, job))
 
-        # Update last_scraped_at
-        cursor.execute("UPDATE companies SET last_scraped_at = ?, status = 'active', degraded_reason = NULL WHERE name = ?", 
-                       (datetime.utcnow().isoformat() + 'Z', name))
-        conn.commit()
-        conn.close()
+        # 3. Insert jobs and update company status under lock
+        with db_lock:
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            cursor = conn.cursor()
+            for posted_date_str, expires_at_str, skills, yoe, title_vec_str, desc_vec_str, status, job in jobs_to_insert:
+                cursor.execute("""
+                    INSERT INTO jobs (
+                        company_name, job_id, job_title, location, department,
+                        posted_date, employment_type, job_description, url, apply_url,
+                        skills_display, required_yoe, embedding_status, scraped_at, expires_at,
+                        title_vector, description_vector, embedding_vector
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    name, job['jobId'], job['jobTitle'], job['location'], job['department'],
+                    posted_date_str, job['employmentType'], job['jobDescription'], job['url'], job['applyUrl'],
+                    json.dumps(skills), yoe, status, datetime.utcnow().isoformat() + 'Z', expires_at_str,
+                    title_vec_str, desc_vec_str, desc_vec_str
+                ))
+                new_count += 1
+
+            cursor.execute("UPDATE companies SET last_scraped_at = ?, status = 'active', degraded_reason = NULL WHERE name = ?", 
+                           (datetime.utcnow().isoformat() + 'Z', name))
+            conn.commit()
+            conn.close()
 
         # Log completion log structure
         log_entry = {
@@ -246,12 +263,13 @@ def scrape_company(company_row, model):
     except Exception as e:
         log_scrape_error(f"[{name}] Acquisition error: {e}")
         db_path = get_db_path()
-        conn = sqlite3.connect(db_path, timeout=30.0)
-        cursor = conn.cursor()
-        # Mark degraded
-        cursor.execute("UPDATE companies SET status = 'degraded', degraded_reason = ? WHERE name = ?", (str(e), name))
-        conn.commit()
-        conn.close()
+        with db_lock:
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            cursor = conn.cursor()
+            # Mark degraded
+            cursor.execute("UPDATE companies SET status = 'degraded', degraded_reason = ? WHERE name = ?", (str(e), name))
+            conn.commit()
+            conn.close()
 
 
 def run_acquisition_cycle(model):
@@ -270,16 +288,17 @@ def run_acquisition_cycle(model):
     conn.close()
 
     settings = load_settings()
-    between_delay = settings['betweenCompaniesDelayMs'] / 1000.0
+    max_workers = settings.get('maxConcurrentCompanies', 3)
+    print(f"Starting parallel acquisition with {max_workers} workers...")
 
-    for i, company in enumerate(companies):
-        if i > 0:
-            print(f"Waiting {between_delay}s before next company...")
-            time.sleep(between_delay)
-        try:
-            scrape_company(company, model)
-        except Exception as e:
-            print(f"Fatal error scraping company {company['name']}: {e}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(scrape_company, company, model): company['name'] for company in companies}
+        for future in futures:
+            company_name = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Fatal error scraping company {company_name}: {e}")
 
     print("=== Python Acquisition cycle complete ===")
 

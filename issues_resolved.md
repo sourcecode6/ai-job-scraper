@@ -1,5 +1,14 @@
 # Issues Resolved / Retrospective
 
+## Version 10.0 (Scraper Parallelization)
+
+### 28. Sequential Scraping Performance Bottleneck
+* **Issue**: The job acquisition loop processed active companies one-by-one with a sequential 10-second delay between them. This made the full scraping cycle slow and resource-inefficient.
+* **Resolution**: 
+  - Refactored `scraper.py` to run company acquisitions concurrently using a `ThreadPoolExecutor`.
+  - Added a configurable `MAX_CONCURRENT_COMPANIES` environment variable (default: 3) to let users balance speed and local CPU/memory usage.
+  - Implemented thread-safe synchronization using a global `db_lock`. The lock is strategically released during HTTP requests and CPU-bound `model.encode()` embedding generation steps to ensure maximum concurrency without risking SQLite `database is locked` write errors.
+
 ## Version 9.0 (Database Size & Push Issue)
 
 ### 27. GitHub Push Failure: SQLite Database Size Exceeding 100 MB Limit

@@ -32,6 +32,7 @@ backend\setup.bat
 | `DATA_RETENTION_DAYS` | Days to keep job data (default: 3) |
 | `SCRAPE_INTERVAL_HOURS` | How often to scrape (default: 6) |
 | `USER_YOE` | Your Years of Experience (default: 4) |
+| `MAX_CONCURRENT_COMPANIES` | Max number of companies to scrape concurrently (default: 3) |
 
 ---
 

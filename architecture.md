@@ -134,10 +134,12 @@ Deduplicates matches and records notification dispatch histories.
   - Designed specifically for automated chron execution via GitHub Actions.
 
 ### 4.2. Multi-ATS Scraper Engine (`scraper.py`)
-- Acts as a dynamic orchestrator that iterates over active companies.
+- Acts as a dynamic orchestrator that crawls active companies **in parallel** using a `ThreadPoolExecutor` worker pool.
+- The concurrency limit is configurable via `maxConcurrentCompanies` (default: 3) to optimize CPU usage during parallel embedding generation.
+- Utilizes a global thread lock (`db_lock`) to synchronize SQLite database reads and writes safely, releasing the lock during network HTTP requests and CPU-heavy `model.encode()` embedding calculations to prevent database locks while maintaining maximum parallelism.
 - Instead of housing all scraping logic, it imports specific, highly-modular ATS adapters from the `backend/nlp_service/adapters/` directory (e.g., `workday.py`, `eightfold_v2.py`, `greenhouse.py`).
 - Respects `robots.txt` rules and rate limits for each site via centralized `utils.py` helpers.
-- **Fault Tolerance**: Safely catches network timeouts, HTTP errors, or `robots.txt` blocks to gracefully exit the specific company's extraction function without crashing the global loop, ensuring pipeline resilience.
+- **Fault Tolerance**: Safely catches network timeouts, HTTP errors, or `robots.txt` blocks to gracefully exit the specific company's extraction function without crashing the global loop, allowing the thread pool to immediately pick up the next company.
 - Directly invokes native site API endpoints (JSON REST services) to retrieve jobs, avoiding heavy headless browser instances.
 - For each job posting, it extracts matching skills from `skills_vocab.json` using word boundary regex patterns, parses the YoE requirements, and calculates vector representations using SentenceTransformers.
 - **Programmatic Filtering**: For custom HTML-scraped portals like ARM, the scraper reads the configured company location filters (e.g., India, UK, Europe) and filters the scraped jobs programmatically in Python since the portal does not support standard URL query parameters for these filters.

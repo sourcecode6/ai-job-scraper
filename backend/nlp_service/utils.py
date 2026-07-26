@@ -34,6 +34,7 @@ def load_settings():
         'matchThreshold': float(os.environ.get('MATCH_THRESHOLD', 65.0)),
         'dataRetentionDays': int(os.environ.get('DATA_RETENTION_DAYS', 3)),
         'scrapeIntervalHours': int(os.environ.get('SCRAPE_INTERVAL_HOURS', 6)),
+        'maxConcurrentCompanies': int(os.environ.get('MAX_CONCURRENT_COMPANIES', 3)),
         'globalRequestDelayMs': 3000,
         'betweenCompaniesDelayMs': 10000,
         'crawlDelayDefaultMs': 5000,
@@ -57,6 +58,8 @@ def load_settings():
                                 settings['dataRetentionDays'] = int(val)
                             elif key == 'SCRAPE_INTERVAL_HOURS':
                                 settings['scrapeIntervalHours'] = int(val)
+                            elif key == 'MAX_CONCURRENT_COMPANIES':
+                                settings['maxConcurrentCompanies'] = int(val)
         except Exception as e:
             print(f"Error loading .env: {e}")
     return settings
