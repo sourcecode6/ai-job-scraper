@@ -3,7 +3,7 @@ import json
 import re
 import html
 from datetime import datetime
-from utils import queue_http
+from backend.nlp_service.utils import queue_http
 
 def scrape_greenhouse(company, filters):
     board_token = company.get('board_token')

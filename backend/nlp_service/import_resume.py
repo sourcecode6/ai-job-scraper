@@ -3,9 +3,10 @@ import sys
 import glob
 import json
 import sqlite3
+import numpy as np
 from datetime import datetime
 import requests
-from db_init import init_db
+from backend.nlp_service.db_init import init_db
 
 
 def load_settings():
@@ -84,13 +85,12 @@ def main():
     try:
         import time
         from pypdf import PdfReader
-        from sentence_transformers import SentenceTransformer
+        from backend.nlp_service.model_factory import get_sentence_transformer
         import numpy as np
         
         # Load skills extractor helper locally from scraper module
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from scraper import extract_skills, get_db_path
-        from logger import log_nlp_event, log_scrape_error
+        from backend.nlp_service.scraper import extract_skills, get_db_path
+        from backend.nlp_service.logger import log_nlp_event, log_scrape_error
         
         # Parse PDF text
         reader = PdfReader(resume_path)
@@ -108,8 +108,7 @@ def main():
         
         # Generate embedding locally
         start_embed_time = time.time()
-        print("Loading SentenceTransformer model locally (this may take a few seconds)...")
-        model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        model = get_sentence_transformer()
         
         chunk_size = 2000
         overlap = 200
@@ -177,7 +176,7 @@ def main():
               resume_skills = excluded.resume_skills,
               resume_uploaded_at = excluded.resume_uploaded_at
         """, (
-            email, resume_text, json.dumps(vector) if vector else None, json.dumps(resume_skills),
+            email, resume_text, np.array(vector, dtype=np.float32).tobytes() if vector else None, json.dumps(resume_skills),
             json.dumps(all_companies), now_iso, now_iso
         ))
         

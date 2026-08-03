@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
 from playwright.sync_api import sync_playwright
-from utils import HEADERS, is_allowed
+from backend.nlp_service.utils import HEADERS, is_allowed
 
 def scrape_apple(company, filters):
     # Base search URL

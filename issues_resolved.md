@@ -1,5 +1,19 @@
 # Issues Resolved / Retrospective
 
+## Version 11.0 (Code Review & Performance Refactor)
+
+### 34. Embedding Deserialization CPU Bottleneck
+* **Issue**: The application was burning significant CPU cycles deserializing JSON arrays of 384-dimensional floating-point vectors from SQLite `TEXT` columns using `json.loads()`.
+* **Resolution**: Migrated the database schema to store vectors natively as binary `BLOB`s. Leveraged `numpy.tobytes()` and `np.frombuffer()` for instantaneous serialization/deserialization, entirely bypassing the JSON parser.
+
+### 33. SQLite "Database is locked" Concurrency Crashes
+* **Issue**: SQLite threw `OperationalError: database is locked` under heavy parallel loads because multiple scraper threads attempted to hold locks and commit writes simultaneously.
+* **Resolution**: Completely decoupled database logic from the scraper threads. Scraper threads now statelessly return job dictionaries, and the main orchestrator executes a single, highly efficient `executemany` bulk insert on the main thread after all workers complete.
+
+### 32. Monolithic Scraper & Brittle Routing
+* **Issue**: `scraper.py` relied on a colossal `if/elif` block to route requests to ATS scripts. Additionally, all ATS adapters duplicated boilerplate HTML cleaning, fallback ID generation, and error handling.
+* **Resolution**: Implemented an elegant Dictionary-based Adapter Registry pattern (`registry.py`) to eliminate conditional routing. Centralized cross-cutting concerns into `utils.py`, stripping hundreds of lines of duplicate boilerplate.
+
 ## Version 10.0 (Scraper Parallelization)
 
 ### 31. Degraded Companies Stuck in Permanent Failure State

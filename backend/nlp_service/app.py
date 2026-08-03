@@ -1,3 +1,4 @@
+from backend.nlp_service.config import get_db_path, load_settings
 import os
 import io
 import json
@@ -15,10 +16,11 @@ import numpy as np
 
 # Load emails module (runs load_env on import)
 import email_sender
-from scraper import run_acquisition_cycle, load_settings, get_db_path, run_cleanup, extract_skills
-from matcher import run_match_cycle, match_for_user
-from logger import log_nlp_event, log_scrape_error
-from db_init import init_db
+from backend.nlp_service.scraper import run_acquisition_cycle, load_settings, get_db_path, run_cleanup, extract_skills
+from backend.nlp_service.matcher import run_match_cycle, match_for_user
+from backend.nlp_service.logger import log_nlp_event, log_scrape_error
+from backend.nlp_service.utils import clean_html
+from backend.nlp_service.db_init import init_db
 
 
 
@@ -33,11 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load SentenceTransformer model on startup
-print("Loading sentence-transformers/all-MiniLM-L6-v2...")
-model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-print("Model loaded successfully!")
-
+from backend.nlp_service.model_factory import get_sentence_transformer
 class TextPayload(BaseModel):
     text: str
 
@@ -85,6 +83,7 @@ async def get_embedding(payload: TextPayload):
             raise HTTPException(status_code=400, detail="No chunks generated")
         
         # Generate embeddings for all chunks
+        model = get_sentence_transformer()
         chunk_embeddings = model.encode(chunks)
         
         # Average the embeddings
@@ -140,6 +139,7 @@ async def upload_resume(
         vector = None
         start_embed_time = time.time()
         if chunks:
+            model = get_sentence_transformer()
             chunk_embeddings = model.encode(chunks)
             avg_embedding = np.mean(chunk_embeddings, axis=0)
             norm = np.linalg.norm(avg_embedding)
@@ -194,7 +194,7 @@ async def upload_resume(
               resume_skills = excluded.resume_skills,
               resume_uploaded_at = excluded.resume_uploaded_at
         """, (
-            email, resume_text, json.dumps(vector) if vector else None, json.dumps(resume_skills),
+            email, resume_text, np.array(vector, dtype=np.float32).tobytes() if vector else None, json.dumps(resume_skills),
             json.dumps(all_companies), now_iso, now_iso
         ))
         
@@ -389,8 +389,10 @@ async def trigger_scrape(background_tasks: BackgroundTasks):
     def run_sync():
         global is_scraping_in_progress
         try:
-            run_acquisition_cycle(model)
-            # Run match cycle immediately after scraping completes
+            run_acquisition_cycle()
+            from backend.nlp_service.enricher import run_enrichment_cycle
+            run_enrichment_cycle()
+            # Run match cycle immediately after scraping and enrichment completes
             run_match_cycle()
         except Exception as e:
             print(f"Error in manual scrape: {e}")
@@ -466,7 +468,9 @@ async def scraper_loop():
             is_scraping_in_progress = True
             try:
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, run_acquisition_cycle, model)
+                await loop.run_in_executor(None, run_acquisition_cycle)
+                from backend.nlp_service.enricher import run_enrichment_cycle
+                await loop.run_in_executor(None, run_enrichment_cycle)
                 await loop.run_in_executor(None, run_match_cycle)
             except Exception as e:
                 print(f"Error in background scraper loop: {e}")

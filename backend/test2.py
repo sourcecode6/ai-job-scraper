@@ -1,8 +1,6 @@
-import sys
-sys.path.append('C:/Users/saura/Desktop/Antigravity/Agent1/backend/nlp_service')
 import json
-from adapters.workday import scrape_workday
-from adapters.greenhouse import scrape_greenhouse
+from backend.nlp_service.adapters.workday import scrape_workday
+from backend.nlp_service.adapters.greenhouse import scrape_greenhouse
 
 config = json.load(open('C:/Users/saura/Desktop/Antigravity/Agent1/backend/companies_config.json', 'r'))
 

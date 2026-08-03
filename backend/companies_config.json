@@ -22,13 +22,16 @@
       ],
       "searchText": "",
       "limit": 20
-    }
+    },
+    "workdayTenant": "nvidia",
+    "workdaySite": "NVIDIAExternalCareerSite",
+    "workdaySubdomain": "nvidia.wd5"
   },
   {
     "name": "Google",
     "ats": "playwright",
     "tier": 3,
-    "enabled": true,
+    "enabled": false,
     "careerUrl": "https://www.google.com/about/careers/applications/jobs",
     "filters": {}
   },
@@ -61,13 +64,15 @@
         "Switzerland"
       ],
       "query": ""
-    }
+    },
+    "eightfoldBaseUrl": "https://apply.careers.microsoft.com",
+    "eightfoldDomain": "microsoft.com"
   },
   {
     "name": "Apple",
     "ats": "apple",
     "tier": 1,
-    "enabled": true,
+    "enabled": false,
     "careerUrl": "https://jobs.apple.com/",
     "filters": {
       "location": "India"
@@ -127,7 +132,10 @@
       ],
       "searchText": "",
       "limit": 20
-    }
+    },
+    "workdayTenant": "broadcom",
+    "workdaySite": "External_Career",
+    "workdaySubdomain": "broadcom.wd1"
   },
   {
     "name": "Arista Networks",
@@ -149,7 +157,8 @@
         "se",
         "ch"
       ]
-    }
+    },
+    "smartRecruitersId": "AristaNetworks"
   },
   {
     "name": "Qualcomm",
@@ -172,7 +181,9 @@
         "Switzerland"
       ],
       "query": ""
-    }
+    },
+    "eightfoldBaseUrl": "https://careers.qualcomm.com",
+    "eightfoldDomain": "qualcomm.com"
   },
   {
     "name": "Cloudflare",
@@ -251,7 +262,10 @@
       ],
       "searchText": "",
       "limit": 20
-    }
+    },
+    "workdayTenant": "intel",
+    "workdaySite": "External",
+    "workdaySubdomain": "intel.wd1"
   },
   {
     "name": "Cerebras Systems",
@@ -276,7 +290,10 @@
     "tier": 3,
     "enabled": true,
     "careerUrl": "https://careers.juniper.net/",
-    "filters": {}
+    "filters": {},
+    "workdayTenant": "hpe",
+    "workdaySite": "Jobsathpe",
+    "workdaySubdomain": "hpe.wd5"
   },
   {
     "name": "NetApp",
@@ -285,7 +302,7 @@
     "enabled": true,
     "careerUrl": "https://careers.netapp.com/",
     "filters": {},
-    "eightfoldBaseUrl": "https://careers.netapp.com",
+    "eightfoldBaseUrl": "https://netapp.eightfold.ai",
     "eightfoldDomain": "netapp.com"
   },
   {
@@ -294,7 +311,10 @@
     "tier": 3,
     "enabled": true,
     "careerUrl": "https://careers.hpe.com/",
-    "filters": {}
+    "filters": {},
+    "workdayTenant": "hpe",
+    "workdaySite": "Jobsathpe",
+    "workdaySubdomain": "hpe.wd5"
   },
   {
     "name": "Samsung Research",
@@ -319,7 +339,10 @@
       ],
       "searchText": "",
       "limit": 20
-    }
+    },
+    "workdayTenant": "sec",
+    "workdaySite": "Samsung_Careers",
+    "workdaySubdomain": "sec.wd3"
   },
   {
     "name": "NXP Semiconductors",
@@ -327,7 +350,10 @@
     "tier": 3,
     "enabled": true,
     "careerUrl": "https://careers.nxp.com/",
-    "filters": {}
+    "filters": {},
+    "workdayTenant": "nxp",
+    "workdaySite": "Careers",
+    "workdaySubdomain": "nxp.wd3"
   },
   {
     "name": "Ericsson",
@@ -350,7 +376,9 @@
         "Switzerland"
       ],
       "query": ""
-    }
+    },
+    "eightfoldBaseUrl": "https://jobs.ericsson.com",
+    "eightfoldDomain": "ericsson.com"
   },
   {
     "name": "Nokia",

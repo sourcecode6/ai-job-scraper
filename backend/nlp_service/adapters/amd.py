@@ -3,7 +3,7 @@ import json
 import re
 import base64
 from datetime import datetime
-from utils import queue_http, HEADERS
+from backend.nlp_service.utils import queue_http, HEADERS
 
 def scrape_amd(company, filters):
     # Works for AMD

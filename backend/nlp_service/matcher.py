@@ -1,11 +1,12 @@
+from backend.nlp_service.config import get_db_path, load_settings
 import os
 import re
 import json
 import sqlite3
 import numpy as np
 from datetime import datetime, timedelta
-import email_sender
-from scraper import get_db_path, load_settings
+from backend.nlp_service import email_sender
+from backend.nlp_service.scraper import get_db_path, load_settings
 
 def compute_similarity(vec_a, vec_b):
     if vec_a is None or vec_b is None or len(vec_a) != len(vec_b):
@@ -142,7 +143,7 @@ def match_for_user(email):
 
 def match_for_user_internal(user):
     email = user['email']
-    resume_vector = json.loads(user['resume_vector'])
+    resume_vector = np.frombuffer(user['resume_vector'], dtype=np.float32)
     selected_companies = json.loads(user['selected_companies'] or '[]')
     
     settings = load_settings()
@@ -164,7 +165,31 @@ def match_for_user_internal(user):
         conn.close()
         return
 
-    # Fetch active, unexpired jobs
+    # 1. Fetch eligible jobs
+    jobs = _fetch_eligible_jobs(cursor, selected_companies)
+
+    # 2. Calculate matches
+    new_matches = _calculate_matches(jobs, resume_vector, threshold, retention_days, email, cursor)
+
+    # 3. Save new matches
+    _save_new_matches(cursor, email, new_matches)
+
+    # 4. Fetch pending matches
+    all_matches = _combine_pending_matches(cursor, email, new_matches, retention_days)
+
+    if not all_matches:
+        print(f"No new matches found for user {email}")
+        conn.close()
+        return
+
+    print(f"Found {len(all_matches)} matches for user {email}")
+
+    # 5. Send notifications
+    _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe)
+
+    conn.close()
+
+def _fetch_eligible_jobs(cursor, selected_companies):
     placeholders = ",".join(["?"] * len(selected_companies))
     query = f"""
         SELECT * FROM jobs
@@ -174,28 +199,26 @@ def match_for_user_internal(user):
         AND datetime(expires_at) > datetime('now')
     """
     cursor.execute(query, selected_companies)
-    jobs = [dict(row) for row in cursor.fetchall()]
+    return [dict(row) for row in cursor.fetchall()]
 
+def _calculate_matches(jobs, resume_vector, threshold, retention_days, email, cursor):
     new_matches = []
     for job in jobs:
-        # Retention age check
         if not is_job_within_retention(job['posted_date'], job['scraped_at'], retention_days):
             continue
 
-        # Calculate similarity
         score = 0.0
         if job['title_vector'] and job['description_vector']:
-            title_vec = json.loads(job['title_vector'])
-            desc_vec = json.loads(job['description_vector'])
+            title_vec = np.frombuffer(job['title_vector'], dtype=np.float32)
+            desc_vec = np.frombuffer(job['description_vector'], dtype=np.float32)
             title_score = compute_similarity(resume_vector, title_vec) * 100
             desc_score = compute_similarity(resume_vector, desc_vec) * 100
             score = (title_score * 0.5) + (desc_score * 0.5)
         else:
-            job_vector = json.loads(job['embedding_vector'])
+            job_vector = np.frombuffer(job['embedding_vector'], dtype=np.float32)
             score = compute_similarity(resume_vector, job_vector) * 100
 
         if score >= threshold:
-            # Deduplication check
             cursor.execute("""
                 SELECT id FROM matched_jobs
                 WHERE email = ? AND company_name = ? AND job_id = ?
@@ -203,19 +226,6 @@ def match_for_user_internal(user):
             
             if not cursor.fetchone():
                 rounded_score = round(score, 1)
-                
-                # Insert match into DB
-                cursor.execute("""
-                    INSERT OR IGNORE INTO matched_jobs
-                      (email, job_id, company_name, match_score, job_title, location, apply_url, skills_display, required_yoe, notified, expires_at)
-                    VALUES
-                      (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-                """, (
-                    email, job['job_id'], job['company_name'], rounded_score, job['job_title'],
-                    job['location'], job['apply_url'], job['skills_display'], job['required_yoe'],
-                    job['expires_at']
-                ))
-                
                 new_matches.append({
                     "job_id": job['job_id'],
                     "company_name": job['company_name'],
@@ -224,10 +234,26 @@ def match_for_user_internal(user):
                     "apply_url": job['apply_url'],
                     "skills_display": job['skills_display'],
                     "required_yoe": job['required_yoe'],
-                    "match_score": rounded_score
+                    "match_score": rounded_score,
+                    "posted_date": job['posted_date'],
+                    "expires_at": job['expires_at']
                 })
+    return new_matches
 
-    # Fetch previously unnotified matches (sent less than 2 times)
+def _save_new_matches(cursor, email, new_matches):
+    for job in new_matches:
+        cursor.execute("""
+            INSERT OR IGNORE INTO matched_jobs
+                (email, job_id, company_name, match_score, job_title, location, apply_url, skills_display, required_yoe, notified, expires_at)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+        """, (
+            email, job['job_id'], job['company_name'], job['match_score'], job['job_title'],
+            job['location'], job['apply_url'], job['skills_display'], job['required_yoe'],
+            job['expires_at']
+        ))
+
+def _combine_pending_matches(cursor, email, new_matches, retention_days):
     cursor.execute("""
         SELECT mj.*, j.posted_date, j.scraped_at
         FROM matched_jobs mj
@@ -236,18 +262,15 @@ def match_for_user_internal(user):
     """, (email,))
     pending_matches = [dict(row) for row in cursor.fetchall()]
 
-    # Combine matches
     all_matches = []
     seen_ids = set()
     
-    # Process new matches
     for m in new_matches:
         key = (m['company_name'], m['job_id'])
         if key not in seen_ids:
             seen_ids.add(key)
             all_matches.append(m)
             
-    # Process pending matches (filtering by current retention setting)
     for m in pending_matches:
         if m['posted_date'] or m['scraped_at']:
             if not is_job_within_retention(m['posted_date'], m['scraped_at'], retention_days):
@@ -257,32 +280,29 @@ def match_for_user_internal(user):
             seen_ids.add(key)
             all_matches.append(m)
 
-    # Sort matches: India first, then UK/Europe, then remote, then others, descending by score
     def sort_key(m):
         loc = m.get('location', '')
-        score = m.get('match_score') or m.get('match_score') or 0.0
+        score = m.get('match_score') or 0.0
         return (get_location_priority_rank(loc), -score)
 
     all_matches.sort(key=sort_key)
+    return all_matches
 
-    if not all_matches:
-        print(f"No new matches found for user {email}")
-        conn.close()
-        return
-
-    print(f"Found {len(all_matches)} matches for user {email}")
-
-    # Fetch degraded companies for errors
+def _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe):
+    from backend.nlp_service.db_init import load_companies_config
+    configs = {c['name']: c for c in load_companies_config()}
+    
     cursor.execute("SELECT name, degraded_reason FROM companies WHERE status = 'degraded'")
-    degraded = cursor.fetchall()
-    errors = [{"name": r["name"], "reason": r["degraded_reason"]} for r in degraded]
+    errors = []
+    for r in cursor.fetchall():
+        if configs.get(r["name"], {}).get("enabled", True):
+            errors.append({"name": r["name"], "reason": r["degraded_reason"]})
 
-    # Dispatch email
+    from backend.nlp_service import email_sender
     sent = email_sender.send_job_digest(email, all_matches, user_yoe, errors)
 
     if sent:
         now_iso = datetime.utcnow().isoformat() + 'Z'
-        # Mark all as notified in DB (increment by 1)
         for m in all_matches:
             cursor.execute("""
                 UPDATE matched_jobs SET notified = notified + 1, notified_at = ?
@@ -294,5 +314,3 @@ def match_for_user_internal(user):
         print(f"Email digest sent and matches marked notified (incremented) for {email}")
     else:
         print(f"Email send failed — matches left as pending for {email}")
-
-    conn.close()

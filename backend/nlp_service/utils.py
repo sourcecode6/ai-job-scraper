@@ -1,3 +1,4 @@
+import html
 import os
 import re
 import json
@@ -10,7 +11,8 @@ import urllib3.util.connection as connection
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
-from logger import log_scrape_info, log_scrape_error, log_nlp_event
+from backend.nlp_service.logger import log_scrape_info, log_scrape_error, log_nlp_event
+from backend.nlp_service.config import load_settings
 
 # Force IPv4 to bypass getaddrinfo/NameResolutionError dual-stack DNS lookup failures on Windows
 connection.allowed_gai_family = lambda: socket.AF_INET
@@ -28,47 +30,8 @@ HEADERS = {
 # Robots.txt cache
 ROBOTS_CACHE = {}
 
-def get_db_path():
-    # Return absolute path to jobs.db
-    # In production, app.py runs in backend/nlp_service/
-    # jobs.db is in backend/data/jobs.db
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.abspath(os.path.join(current_dir, '..', 'data', 'jobs.db'))
 
-def load_settings():
-    settings = {
-        'matchThreshold': float(os.environ.get('MATCH_THRESHOLD', 65.0)),
-        'dataRetentionDays': int(os.environ.get('DATA_RETENTION_DAYS', 3)),
-        'scrapeIntervalHours': int(os.environ.get('SCRAPE_INTERVAL_HOURS', 6)),
-        'maxConcurrentCompanies': int(os.environ.get('MAX_CONCURRENT_COMPANIES', 3)),
-        'globalRequestDelayMs': 3000,
-        'betweenCompaniesDelayMs': 10000,
-        'crawlDelayDefaultMs': 5000,
-    }
-    # Read backend/.env as fallback/override
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    env_path = os.path.abspath(os.path.join(current_dir, '..', '.env'))
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#'):
-                        parts = line.split('=', 1)
-                        if len(parts) == 2:
-                            key = parts[0].strip()
-                            val = parts[1].strip()
-                            if key == 'MATCH_THRESHOLD':
-                                settings['matchThreshold'] = float(val)
-                            elif key == 'DATA_RETENTION_DAYS':
-                                settings['dataRetentionDays'] = int(val)
-                            elif key == 'SCRAPE_INTERVAL_HOURS':
-                                settings['scrapeIntervalHours'] = int(val)
-                            elif key == 'MAX_CONCURRENT_COMPANIES':
-                                settings['maxConcurrentCompanies'] = int(val)
-        except Exception as e:
-            print(f"Error loading .env: {e}")
-    return settings
+
 
 # Load skills vocab
 def load_skills_vocab():
@@ -253,71 +216,11 @@ def get_crawl_delay_ms(career_url, default_delay):
     return default_delay
     return default_delay
 
-COMPANY_CONFIGS = {
-    'NVIDIA': {
-        'workdayTenant': 'nvidia',
-        'workdaySite': 'NVIDIAExternalCareerSite',
-        'workdaySubdomain': 'nvidia.wd5',
-    },
-    'Arista Networks': {
-        'smartRecruitersId': 'AristaNetworks',
-    },
-    'Qualcomm': {
-        'eightfoldBaseUrl': 'https://careers.qualcomm.com',
-        'eightfoldDomain': 'qualcomm.com',
-    },
-    'Broadcom': {
-        'workdayTenant': 'broadcom',
-        'workdaySite': 'External_Career',
-        'workdaySubdomain': 'broadcom.wd1',
-    },
-    'Intel': {
-        'workdayTenant': 'intel',
-        'workdaySite': 'External',
-        'workdaySubdomain': 'intel.wd1',
-    },
-    'Microsoft': {
-        'eightfoldBaseUrl': 'https://apply.careers.microsoft.com',
-        'eightfoldDomain': 'microsoft.com',
-    },
-    'Ericsson': {
-        'eightfoldBaseUrl': 'https://jobs.ericsson.com',
-        'eightfoldDomain': 'ericsson.com',
-    },
-    'Cloudflare': {
-        'board_token': 'cloudflare',
-    },
-    'Cerebras Systems': {
-        'board_token': 'cerebras',
-    },
-    'NetApp': {
-        'eightfoldBaseUrl': 'https://netapp.eightfold.ai',
-        'eightfoldDomain': 'netapp.com',
-    },
-    'Hewlett Packard Enterprise': {
-        'workdayTenant': 'hpe',
-        'workdaySite': 'Jobsathpe',
-        'workdaySubdomain': 'hpe.wd5',
-    },
-    'Juniper Networks': {
-        'workdayTenant': 'hpe',
-        'workdaySite': 'Jobsathpe',
-        'workdaySubdomain': 'hpe.wd5',
-    },
-    'NXP Semiconductors': {
-        'workdayTenant': 'nxp',
-        'workdaySite': 'Careers',
-        'workdaySubdomain': 'nxp.wd3',
-    },
-    'Samsung Research': {
-        'workdayTenant': 'sec',
-        'workdaySite': 'Samsung_Careers',
-        'workdaySubdomain': 'sec.wd3',
-    },
-    'Graphcore': {
-        'board_token': 'graphcore',
-    }
-}
+# Global connection pool
+http_session = requests.Session()
+adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=50, max_retries=1)
+http_session.mount('http://', adapter)
+http_session.mount('https://', adapter)
 
 # Custom HTTP rate-limited queue simulation
 GLOBAL_LAST_REQUEST_TIME = 0.0
@@ -340,9 +243,9 @@ def queue_http(url, method='GET', max_retries=3, **kwargs):
             
         try:
             if method.upper() == 'POST':
-                response = requests.post(url, **kwargs)
+                response = http_session.post(url, **kwargs)
             else:
-                response = requests.get(url, **kwargs)
+                response = http_session.get(url, **kwargs)
                 
             GLOBAL_LAST_REQUEST_TIME = time.time()
             
@@ -363,3 +266,29 @@ def queue_http(url, method='GET', max_retries=3, **kwargs):
             
     raise Exception(f"Max retries ({max_retries}) exceeded for {url}")
 
+
+
+def clean_html(html_str: str) -> str:
+    if not html_str:
+        return ""
+    text = re.sub(r'<[^>]+>', ' ', html_str)
+    return html.unescape(text).strip()
+
+def filter_by_location(job_location: str, location_filters: list) -> bool:
+    if not location_filters:
+        return True
+    if not job_location:
+        return False
+    loc_lower = job_location.lower()
+    return any(f.lower() in loc_lower for f in location_filters)
+
+def generate_fallback_job_id(prefix: str = "") -> str:
+    suffix = str(int(time.time()))
+    if prefix:
+        prefix_clean = prefix.replace(' ', '-').lower()
+        return f"{prefix_clean}-{suffix}"
+    return suffix
+
+class AdapterError(Exception):
+    """Custom exception for adapter failures."""
+    pass

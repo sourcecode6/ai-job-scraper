@@ -2,6 +2,7 @@
 setlocal
 title AI Job Scraper — Setup & Start
 cd /d "%~dp0"
+set PYTHONPATH=%~dp0..
 
 echo.
 echo  ╔═══════════════════════════════════════╗
@@ -102,12 +103,7 @@ echo  Press Ctrl+C at any time to stop.
 echo.
 call .\nlp_service\venv_nlp\Scripts\python.exe -u nlp_service\app.py
 
-:: Cleanup
+:: Finished
 echo.
-echo  [6/6] Cleaning up virtual environment...
-rmdir /s /q nlp_service\venv_nlp
-if not exist "nlp_service\venv_nlp" (
-    echo  [OK] Virtual environment deleted successfully!
-) else (
-    echo  [WARNING] Failed to delete virtual environment.
-)
+echo  [OK] Setup complete.
+pause

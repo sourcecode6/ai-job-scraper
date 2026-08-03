@@ -1,59 +1,82 @@
 import os
 import json
+from loguru import logger
 from datetime import datetime
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGS_DIR = os.path.abspath(os.path.join(CURRENT_DIR, '..', 'logs'))
 
-def ensure_logs_dir():
-    if not os.path.exists(LOGS_DIR):
-        os.makedirs(LOGS_DIR, exist_ok=True)
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR, exist_ok=True)
 
-def write_log(filename, log_data):
-    ensure_logs_dir()
-    filepath = os.path.join(LOGS_DIR, filename)
+# Configure Loguru to write JSON to separate files using enqueue=True (async)
+logger.remove() # Remove default stderr logger
+
+# Define custom JSON formatter
+def format_json(record):
+    # Reconstruct the log structure the system expects
+    payload = record["extra"].get("payload", {})
     
-    # Ensure timestamp is the first key in the dictionary serialization order
     ordered_log = {}
-    ordered_log['timestamp'] = log_data.get('timestamp') or (datetime.utcnow().isoformat() + 'Z')
+    ordered_log['timestamp'] = record["time"].isoformat() + 'Z'
     
-    for k, v in log_data.items():
-        if k != 'timestamp':
-            ordered_log[k] = v
-            
-    try:
-        with open(filepath, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(ordered_log) + '\n')
-    except Exception as e:
-        print(f"[Logger Error] Failed to write to log file {filename}: {e}")
+    # Base fields
+    ordered_log['level'] = record["level"].name.lower()
+    if "logType" in payload:
+        ordered_log['logType'] = payload.pop("logType")
+    if "event" in payload:
+        ordered_log['event'] = payload.pop("event")
+        
+    ordered_log['message'] = record["message"]
+    
+    # Merge any remaining extra payload
+    for k, v in payload.items():
+        ordered_log[k] = v
+        
+    # Serialize and store in extra to avoid curly brace format string parsing errors
+    record["extra"]["serialized"] = json.dumps(ordered_log)
+    return "{extra[serialized]}\n"
+
+
+# Scrape.log gets INFO and ERROR for scraper
+logger.add(os.path.join(LOGS_DIR, 'scrape.log'), 
+           filter=lambda record: record["extra"].get("dest") in ["scrape", "all"],
+           format=format_json, 
+           enqueue=True, 
+           rotation="10 MB")
+
+# Error.log gets only ERROR
+logger.add(os.path.join(LOGS_DIR, 'error.log'), 
+           filter=lambda record: record["extra"].get("dest") in ["error", "all"] and record["level"].name == "ERROR",
+           format=format_json, 
+           enqueue=True, 
+           rotation="10 MB")
+
+# NLP.log gets NLP specific logs
+logger.add(os.path.join(LOGS_DIR, 'nlp.log'), 
+           filter=lambda record: record["extra"].get("dest") in ["nlp", "all"],
+           format=format_json, 
+           enqueue=True, 
+           rotation="10 MB")
+
+# Re-add console logger for debugging in terminal
+logger.add(lambda msg: print(msg, end=""), format="[{level}] {message}")
+
 
 def log_scrape_info(message, extra=None):
-    data = {"level": "info", "message": message}
-    if extra:
-        data.update(extra)
-    write_log('scrape.log', data)
-    print(f"[INFO] {message}")
+    payload = extra or {}
+    logger.bind(dest="scrape", payload=payload).info(message)
 
 def log_scrape_error(message, status=None, extra=None):
-    data = {"level": "error", "message": message}
+    payload = extra or {}
     if status is not None:
-        data["status"] = status
-    if extra:
-        data.update(extra)
-    # Errors are logged to both scrape.log and error.log
-    write_log('scrape.log', data)
-    write_log('error.log', data)
-    print(f"[ERROR] {message}")
+        payload["status"] = status
+    # Dest 'all' routes to scrape.log and error.log (due to error filter)
+    logger.bind(dest="all", payload=payload).error(message)
 
 def log_nlp_event(message, event, extra=None):
-    data = {
-        "level": "info",
-        "logType": "nlp",
-        "event": event,
-        "message": message
-    }
-    if extra:
-        data.update(extra)
-    write_log('nlp.log', data)
-    write_log('scrape.log', data)
-    print(f"[NLP] {event}: {message}")
+    payload = extra or {}
+    payload["logType"] = "nlp"
+    payload["event"] = event
+    # Dest 'all' routes to nlp.log and scrape.log
+    logger.bind(dest="all", payload=payload).info(message)

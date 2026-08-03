@@ -62,7 +62,7 @@ All data is stored inside `backend/data/jobs.db`. The relational schema comprise
 Tracks registered user profiles, resume vectors, extracted skills, and configuration preferences.
 - `email` (TEXT, PRIMARY KEY): Recipient email address.
 - `resume_text` (TEXT): Plain text content parsed from the PDF.
-- `resume_vector` (TEXT): JSON array containing the float vector representation of the resume.
+- `resume_vector` (BLOB): Binary numpy byte array containing the float vector representation of the resume.
 - `resume_skills` (TEXT): JSON array of extracted skill tokens.
 - `selected_companies` (TEXT): JSON array of company names selected for matching.
 - `match_threshold` (REAL): Minimum match score (0-100) to notify.
@@ -76,7 +76,7 @@ Lists tracked employers, ATS portals, scraped records, and degradation tracking.
 - `ats` (TEXT): Portal type (e.g., "workday", "smartrecruiters", "cisco", "eightfold", "eightfold_v2", "greenhouse", "amd", "ibm", "arm").
 - `tier` (INTEGER): Priority level for scraping.
 - `career_url` (TEXT): URL to the career home page.
-- `status` (TEXT): Status flags (`active`, `degraded`).
+- `status` (TEXT): Status flags (`active`, `degraded`). Checked via database constraint.
 - `last_scraped_at` (TEXT): ISO timestamp of last run.
 - `degraded_reason` (TEXT): Logs error details if scraper fails.
 
@@ -95,9 +95,9 @@ Stores scraped job postings, locations, description details, and pre-calculated 
 - `skills_display` (TEXT): JSON list of extracted skill keywords.
 - `required_yoe` (INTEGER): Extracted minimum years of experience.
 - `embedding_status` (TEXT): Processing flags (`pending`, `done`, `failed`).
-- `title_vector` (TEXT): Embedding representation of the title.
-- `description_vector` (TEXT): Embedding representation of the description.
-- `embedding_vector` (TEXT): Embedding representation of the combined text.
+- `title_vector` (BLOB): Binary numpy byte array embedding representation of the title.
+- `description_vector` (BLOB): Binary numpy byte array embedding representation of the description.
+- `embedding_vector` (BLOB): Binary numpy byte array embedding representation of the combined text.
 - `scraped_at` (TEXT): Timestamp of acquisition.
 - `expires_at` (TEXT): Expire limit based on retention settings.
 - *Primary Key*: `(company_name, job_id)`

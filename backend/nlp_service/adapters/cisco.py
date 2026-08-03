@@ -3,17 +3,26 @@ import json
 import re
 import base64
 from datetime import datetime
-from utils import queue_http, HEADERS
+from backend.nlp_service.utils import queue_http, HEADERS, http_session
 
 def get_cisco_csrf():
     res = queue_http('https://careers.cisco.com/global/en/search-results')
     if res.status_code != 200:
         res.raise_for_status()
 
-    cookies = res.cookies
-    cookie_header = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+    play_session = None
+    if 'PLAY_SESSION' in res.cookies:
+        play_session = res.cookies.get('PLAY_SESSION')
+    
+    if not play_session:
+        for c in http_session.cookies:
+            if c.name == 'PLAY_SESSION' and 'cisco.com' in c.domain:
+                play_session = c.value
+                break
+    
+    # Just forward all session cookies to subsequent requests
+    cookie_header = "; ".join([f"{k}={v}" for k, v in http_session.cookies.items()])
 
-    play_session = cookies.get('PLAY_SESSION')
     if not play_session:
         raise Exception("PLAY_SESSION cookie not found")
 
