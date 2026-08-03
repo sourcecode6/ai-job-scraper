@@ -42,6 +42,7 @@ jobs:
           NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
           MATCH_THRESHOLD: ${{ secrets.MATCH_THRESHOLD || '30' }}
           DATA_RETENTION_DAYS: ${{ secrets.DATA_RETENTION_DAYS || '3' }}
+          PYTHONPATH: .
         run: |
           python backend/nlp_service/workflow_runner.py
 
