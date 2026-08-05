@@ -36,7 +36,7 @@ def format_posted_date(posted_date):
         # Fallback to string as-is
         return posted_date
 
-def send_job_digest(to_email, matches, user_yoe, errors=None):
+def send_job_digest(to_email, matches, user_yoe, errors=None, resume_skills=None):
     email_user = os.environ.get('EMAIL_USER')
     email_pass = os.environ.get('EMAIL_PASS')
 
@@ -47,8 +47,8 @@ def send_job_digest(to_email, matches, user_yoe, errors=None):
     date_str = datetime.now().strftime('%B %d, %Y')
     subject = f"🎯 {len(matches)} New Job Match{'es' if len(matches) > 1 else ''} — {date_str}"
 
-    html = build_email_html(matches, date_str, user_yoe, errors)
-    text = build_email_text(matches, date_str, user_yoe, errors)
+    html = build_email_html(matches, date_str, user_yoe, errors, resume_skills=resume_skills)
+    text = build_email_text(matches, date_str, user_yoe, errors, resume_skills=resume_skills)
 
     try:
         msg = MIMEMultipart('alternative')
@@ -70,7 +70,7 @@ def send_job_digest(to_email, matches, user_yoe, errors=None):
         print(f"Failed to send email digest to {to_email}: {e}")
         return False
 
-def build_email_html(matches, date_str, user_yoe, errors=None):
+def build_email_html(matches, date_str, user_yoe, errors=None, resume_skills=None):
     cards = []
     for m in matches:
         score = m.get('match_score') or m.get('matchScore') or 0
@@ -89,16 +89,26 @@ def build_email_html(matches, date_str, user_yoe, errors=None):
             except Exception:
                 skills = []
 
+        if resume_skills:
+            resume_skills_lower = {s.lower() for s in resume_skills}
+            display_skills = [s for s in skills if s.lower() in resume_skills_lower]
+        else:
+            display_skills = skills[:8]
+
         required_yoe = m.get('required_yoe')
         if required_yoe is None:
             required_yoe = m.get('requiredYoe')
 
         score_color = '#22c55e' if score >= 80 else '#f59e0b' if score >= 65 else '#94a3b8'
         
-        skill_tags = "".join([
-            f'<span style="background:#1e293b;color:#94a3b8;padding:2px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block;">{s}</span>'
-            for s in skills[:8]
-        ])
+        skill_tags = ""
+        if display_skills:
+            tags = "".join([
+                f'<span style="background:#064e3b;color:#34d399;padding:2px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block;font-weight:600;">✓ {s}</span>' if resume_skills else f'<span style="background:#1e293b;color:#94a3b8;padding:2px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block;">{s}</span>'
+                for s in display_skills[:8]
+            ])
+            prefix = '<div style="font-size:12px;color:#cbd5e1;margin-bottom:4px;font-weight:600;">🎯 Matched Skills:</div>' if resume_skills else ''
+            skill_tags = f"{prefix}{tags}"
 
         yoe_warning_html = ''
         if required_yoe is not None:
@@ -198,7 +208,7 @@ def build_email_html(matches, date_str, user_yoe, errors=None):
 </html>
 """
 
-def build_email_text(matches, date_str, user_yoe, errors=None):
+def build_email_text(matches, date_str, user_yoe, errors=None, resume_skills=None):
     lines = [f"🎯 {len(matches)} New Job Matches — {date_str}", ""]
     
     if errors:
@@ -214,6 +224,22 @@ def build_email_text(matches, date_str, user_yoe, errors=None):
         company = m.get('company_name') or m.get('companyName') or ''
         location = m.get('location') or 'Not specified'
         apply_url = m.get('apply_url') or m.get('applyUrl') or ''
+        
+        skills_raw = m.get('skills_display') or m.get('skillsDisplay') or '[]'
+        if isinstance(skills_raw, list):
+            skills = skills_raw
+        else:
+            try:
+                skills = json.loads(skills_raw) if skills_raw else []
+            except Exception:
+                skills = []
+
+        if resume_skills:
+            resume_skills_lower = {s.lower() for s in resume_skills}
+            display_skills = [s for s in skills if s.lower() in resume_skills_lower]
+        else:
+            display_skills = skills[:8]
+
         required_yoe = m.get('required_yoe')
         if required_yoe is None:
             required_yoe = m.get('requiredYoe')
@@ -232,6 +258,9 @@ def build_email_text(matches, date_str, user_yoe, errors=None):
         job_id_val = m.get('job_id') or m.get('jobId') or ''
         lines.append(f"{title} @ {company} (Job ID: {job_id_val})")
         lines.append(f"Match: {score}% | Location: {location}{yoe_warning_text}")
+        if display_skills:
+            prefix = "Matched Skills: " if resume_skills else "Skills: "
+            lines.append(f"{prefix}{', '.join(display_skills[:8])}")
         lines.append(f"Apply: {apply_url}")
         lines.append("─" * 50)
         

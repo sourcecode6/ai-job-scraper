@@ -100,9 +100,17 @@ def scrape_cisco(company, filters):
             break
 
         for j in page_jobs:
+            if j == page_jobs[0]:
+                print("ML_JOB_PARSER:", j.get('ml_job_parser'))
             job_id = j.get('jobId') or j.get('reqId') or j.get('jobSeqNo') or str(int(time.time()))
             loc = j.get('location') or ", ".join(filter(None, [j.get('city'), j.get('state'), j.get('country')]))
             job_url = j.get('applyUrl') or f"https://careers.cisco.com/global/en/job/{job_id}"
+
+            teaser = j.get('descriptionTeaser', '')
+            skills_list = j.get('ml_skills', [])
+            if skills_list and isinstance(skills_list, list):
+                skills_str = ", ".join(skills_list)
+                teaser += f" Required Skills: {skills_str}"
 
             jobs.append({
                 "companyName": company['name'],
@@ -112,7 +120,7 @@ def scrape_cisco(company, filters):
                 "department": j.get('category') or j.get('department') or '',
                 "postedDate": j.get('postedDate') or j.get('dateCreated') or datetime.utcnow().isoformat() + 'Z',
                 "employmentType": j.get('type', 'Full-time'),
-                "jobDescription": j.get('descriptionTeaser', ''),
+                "jobDescription": teaser,
                 "url": job_url,
                 "applyUrl": j.get('applyUrl') or job_url
             })

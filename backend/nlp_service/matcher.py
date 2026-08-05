@@ -145,6 +145,7 @@ def match_for_user_internal(user):
     email = user['email']
     resume_vector = np.frombuffer(user['resume_vector'], dtype=np.float32)
     selected_companies = json.loads(user['selected_companies'] or '[]')
+    resume_skills = json.loads(user.get('resume_skills') or '[]')
     
     settings = load_settings()
     threshold = settings['matchThreshold']
@@ -185,7 +186,7 @@ def match_for_user_internal(user):
     print(f"Found {len(all_matches)} matches for user {email}")
 
     # 5. Send notifications
-    _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe)
+    _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe, resume_skills=resume_skills)
 
     conn.close()
 
@@ -288,7 +289,7 @@ def _combine_pending_matches(cursor, email, new_matches, retention_days):
     all_matches.sort(key=sort_key)
     return all_matches
 
-def _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe):
+def _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe, resume_skills=None):
     from backend.nlp_service.db_init import load_companies_config
     configs = {c['name']: c for c in load_companies_config()}
     
@@ -299,7 +300,7 @@ def _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe):
             errors.append({"name": r["name"], "reason": r["degraded_reason"]})
 
     from backend.nlp_service import email_sender
-    sent = email_sender.send_job_digest(email, all_matches, user_yoe, errors)
+    sent = email_sender.send_job_digest(email, all_matches, user_yoe, errors, resume_skills=resume_skills)
 
     if sent:
         now_iso = datetime.utcnow().isoformat() + 'Z'
