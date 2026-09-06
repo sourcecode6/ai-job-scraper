@@ -135,7 +135,7 @@ Startup → Scrape all companies → Local Job Embeddings (offline model)
 ```
 
 1. **Scraping**: Uses official ATS APIs where available, falls back to JSON-LD structured data or clean widget POST requests.
-2. **Local AI Matching**: Your resume is converted to a 384-dimensional semantic vector once on upload. Each job gets its own vector at scrape time using a local, offline `sentence-transformers` `all-MiniLM-L6-v2` model. Matching is pure in-memory math using NumPy with no external API calls or rate limits.
+2. **Local AI Matching**: Drop up to 4 PDFs (e.g. `cvemb.pdf`, `cvnet.pdf`) in the folder. The system auto-detects them, generates 384-dimensional vectors for full text and Professional Summary, and matches jobs against all active profiles taking the max score. Includes Skills Coverage checking. Matching is pure in-memory math using NumPy.
 3. **Email**: Sent via Gmail SMTP. If it fails, the matches are retried on the next cycle.
 4. **Storage**: Single SQLite file at `backend/data/jobs.db` using Python's native `sqlite3`. Jobs and matches expire after 3 days automatically.
 

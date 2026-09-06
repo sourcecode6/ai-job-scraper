@@ -76,7 +76,7 @@ def build_email_html(matches, date_str, user_yoe, errors=None, resume_skills=Non
         score = m.get('match_score') or m.get('matchScore') or 0
         title = m.get('job_title') or m.get('jobTitle') or 'Unknown Title'
         company = m.get('company_name') or m.get('companyName') or ''
-        location = m.get('location') or 'Not specified'
+        location = m.get('location') or 'Location not listed'
         apply_url = m.get('apply_url') or m.get('applyUrl') or '#'
         posted_date = m.get('posted_date') or m.get('postedDate') or ''
         
@@ -99,6 +99,15 @@ def build_email_html(matches, date_str, user_yoe, errors=None, resume_skills=Non
         if required_yoe is None:
             required_yoe = m.get('requiredYoe')
 
+        # via: badge — shown only when multiple resumes contributed
+        has_multi     = m.get('has_multi', 0)
+        winning_label = m.get('winning_label', '')
+        via_badge = ''
+        if has_multi and winning_label:
+            via_badge = (f'<span style="background:#1e293b;color:#64748b;padding:2px 10px;'
+                         f'border-radius:10px;font-size:11px;margin-left:6px;font-style:italic;">'
+                         f'via: {winning_label}</span>')
+
         score_color = '#22c55e' if score >= 80 else '#f59e0b' if score >= 65 else '#94a3b8'
         
         skill_tags = ""
@@ -107,8 +116,10 @@ def build_email_html(matches, date_str, user_yoe, errors=None, resume_skills=Non
                 f'<span style="background:#064e3b;color:#34d399;padding:2px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block;font-weight:600;">✓ {s}</span>' if resume_skills else f'<span style="background:#1e293b;color:#94a3b8;padding:2px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block;">{s}</span>'
                 for s in display_skills[:8]
             ])
-            prefix = '<div style="font-size:12px;color:#cbd5e1;margin-bottom:4px;font-weight:600;">🎯 Matched Skills:</div>' if resume_skills else ''
-            skill_tags = f"{prefix}{tags}"
+            prefix = '<div style="font-size:12px;color:#cbd5e1;margin-bottom:4px;font-weight:600;">Matched Skills:</div>' if resume_skills else ''
+            skill_tags = f"{prefix}{tags}{via_badge}"
+        elif via_badge:
+            skill_tags = via_badge
 
         yoe_warning_html = ''
         if required_yoe is not None:
@@ -148,7 +159,7 @@ def build_email_html(matches, date_str, user_yoe, errors=None, resume_skills=Non
             {score}% Match
           </div>
         </div>
-        <div style="font-size:13px;color:#94a3b8;margin-bottom:10px;">
+        <div style="font-size:13px;color:#cbd5e1;font-weight:500;margin-bottom:10px;">
           📍 {location}{date_badge_html}
         </div>
         {yoe_warning_html}
@@ -222,7 +233,7 @@ def build_email_text(matches, date_str, user_yoe, errors=None, resume_skills=Non
         score = m.get('match_score') or m.get('matchScore') or 0
         title = m.get('job_title') or m.get('jobTitle') or 'Unknown Title'
         company = m.get('company_name') or m.get('companyName') or ''
-        location = m.get('location') or 'Not specified'
+        location = m.get('location') or 'Location not listed'
         apply_url = m.get('apply_url') or m.get('applyUrl') or ''
         
         skills_raw = m.get('skills_display') or m.get('skillsDisplay') or '[]'
@@ -260,7 +271,8 @@ def build_email_text(matches, date_str, user_yoe, errors=None, resume_skills=Non
         lines.append(f"Match: {score}% | Location: {location}{yoe_warning_text}")
         if display_skills:
             prefix = "Matched Skills: " if resume_skills else "Skills: "
-            lines.append(f"{prefix}{', '.join(display_skills[:8])}")
+            via_text = f"  [via: {m.get('winning_label')}]" if m.get('has_multi') and m.get('winning_label') else ""
+            lines.append(f"{prefix}{', '.join(display_skills[:8])}{via_text}")
         lines.append(f"Apply: {apply_url}")
         lines.append("─" * 50)
         

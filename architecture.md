@@ -58,17 +58,24 @@ AI-Job-Scraper/
 
 All data is stored inside `backend/data/jobs.db`. The relational schema comprises four primary tables:
 
-### 3.1. `users`
-Tracks registered user profiles, resume vectors, extracted skills, and configuration preferences.
+### 3.1. `users` & `user_resumes`
+Tracks registered user profiles and configuration preferences.
 - `email` (TEXT, PRIMARY KEY): Recipient email address.
-- `resume_text` (TEXT): Plain text content parsed from the PDF.
-- `resume_vector` (BLOB): Binary numpy byte array containing the float vector representation of the resume.
-- `resume_skills` (TEXT): JSON array of extracted skill tokens.
 - `selected_companies` (TEXT): JSON array of company names selected for matching.
 - `match_threshold` (REAL): Minimum match score (0-100) to notify.
-- `resume_uploaded_at` (TEXT): ISO timestamp of upload.
 - `last_notified_at` (TEXT): ISO timestamp of the last successful email digest.
 - `created_at` (TEXT): Account creation timestamp.
+*(Legacy `resume_*` columns remain for backward compatibility but are now superseded).*
+
+**`user_resumes`** (Supports up to 4 resumes per user):
+- `id` (INTEGER, PRIMARY KEY)
+- `email` (TEXT): References `users.email`.
+- `pdf_filename` (TEXT): E.g., `cvemb.pdf`.
+- `slot_label` (TEXT): Auto-derived label (e.g., `Emb`, `Net`).
+- `pdf_hash` (TEXT): MD5 hash for change detection.
+- `resume_vector` (BLOB): Full resume float vector.
+- `resume_summary_vector` (BLOB): Vector of the 'Professional Summary' section.
+- `resume_skills` (TEXT): JSON array of extracted skill tokens.
 
 ### 3.2. `companies`
 Lists tracked employers, ATS portals, scraped records, and degradation tracking.
@@ -116,6 +123,8 @@ Deduplicates matches and records notification dispatch histories.
 - `notified` (INTEGER): Binary flag (`0` for pending, `1` for sent).
 - `notified_at` (TEXT): ISO timestamp of sent email.
 - `expires_at` (TEXT): Expiration limit.
+- `winning_label` (TEXT): Label of the resume that scored highest.
+- `has_multi` (INTEGER): Flag for multiple active resumes.
 - *Primary Key*: `(email, company_name, job_id)`
 
 ---
@@ -173,7 +182,7 @@ sequenceDiagram
     import_resume.py->>import_resume.py: Read PDF bytes & Extract text
     import_resume.py->>Model: Generate float vector
     import_resume.py->>import_resume.py: Extract skill tokens matching vocabulary
-    import_resume.py->>DB: Write profile to `users` & Clear old matches
+    import_resume.py->>DB: Hash deduplication, upsert to `user_resumes` & Clear old matches
     import_resume.py-->>User: Console success message
 ```
 

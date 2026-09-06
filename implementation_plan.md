@@ -1,4 +1,10 @@
-# AI Job Scraper App — Implementation Plan (v10 — Scraper Parallelization & DNS Mitigations)
+# AI Job Scraper App — Implementation Plan (v11 — Multi-Resume Support & Advanced Scoring)
+
+## Phase 7: Multi-Resume Support & Advanced Scoring (Completed)
+- **Generic Multi-Resume Pipeline:** Migrated from a single resume to supporting up to 4 concurrent resumes. Created `user_resumes` table to store multiple profiles per user. The matcher now loads all active profiles and selects the highest match score per job.
+- **Automated Resume Change Detection:** Added Step 0 to `workflow_runner.py` which hashes all PDF files on disk and automatically re-imports them if new, modified, or deleted files are detected.
+- **Advanced Blended Scoring:** Job titles are now matched exclusively against the user's `Professional Summary` section. The overall score is now a blend of Title Summary overlap (25%), Job Description match (55%), and required Skills Coverage (20%).
+- **Email Badges:** Added a `via: Label` tag to email HTML and text digests to clearly indicate which resume generated the highest score for that specific job match.
 
 ## Phase 6: Scraper Parallelization & DNS Mitigations (Completed)
 - **Parallel Scraper Orchestration:** Refactored `scraper.py` to run company acquisitions concurrently using a thread pool executor (`ThreadPoolExecutor`). Added configurable `MAX_CONCURRENT_COMPANIES` (default `3`).

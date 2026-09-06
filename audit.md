@@ -34,8 +34,8 @@ We employ conservative, human-like request rates to ensure we do not degrade the
 
 ### D. Private Offline NLP (Zero Data Leakage)
 To protect user privacy (resume parsing):
-- Resumes are processed locally using offline chunking.
-- The Semantic Matching model (`sentence-transformers/all-MiniLM-L6-v2`) runs via PyTorch locally.
+- Multiple resumes (up to 4) are processed and hashed strictly locally. No document uploads occur outside the machine.
+- The Semantic Matching model (`sentence-transformers/all-MiniLM-L6-v2`) runs via PyTorch locally to generate all text embeddings.
 - **Status**: ✅ Implemented. No resume data or job descriptions are transmitted to third-party NLP providers like OpenAI or HuggingFace web APIs.
 
 ## 3. Scraper-Specific Compliance Status
@@ -59,8 +59,8 @@ To protect user privacy (resume parsing):
 As a **Personal Use Application** running strictly on a local Windows PC (SQLite database):
 - No data is monetized, sold, or shared with third parties.
 - All scraped data is ephemeral (auto-deleted by the 3-day `DATA_RETENTION_DAYS` cleanup cron).
-- The system processes public enterprise data (job descriptions) rather than Personal Identifiable Information (PII). User data (resume/email) never leaves the local machine.
+- The system processes public enterprise data (job descriptions) rather than Personal Identifiable Information (PII). User data (multiple resumes/email/hashes) never leaves the local machine.
 
 ---
-**Audit Date**: 2026-07-12
+**Audit Date**: 2026-09-06
 **Overall Compliance Status**: ✅ FULLY COMPLIANT

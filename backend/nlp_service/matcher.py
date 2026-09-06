@@ -20,30 +20,27 @@ def compute_similarity(vec_a, vec_b):
         return 0.0
     return float(dot / (norm_a * norm_b))
 
-def get_location_priority_rank(location):
-    if not location:
-        return 3
-    loc = location.lower()
-    # Check India
-    if 'india' in loc or ', in' in loc or loc.endswith(' in') or re.search(r'\bin\b', loc) is not None:
-        return 0
-    # Check UK
-    if 'united kingdom' in loc or ' u.k.' in loc or '\buk\b' in loc or ', uk' in loc or 'great britain' in loc or 'england' in loc or 'scotland' in loc or 'wales' in loc or 'london' in loc:
-        return 1
-    # Check Europe
-    european_keywords = [
-        'europe', 'germany', 'france', 'italy', 'spain', 'poland', 'netherlands', 'belgium',
-        'austria', 'switzerland', 'sweden', 'norway', 'denmark', 'finland', 'ireland', 'portugal',
-        'greece', 'czech republic', 'hungary', 'romania', 'bulgaria', 'slovakia', 'croatia',
-        'lithuania', 'latvia', 'estonia', 'slovenia', 'luxembourg', 'malta', 'cyprus',
-        'munich', 'berlin', 'paris', 'amsterdam', 'dublin', 'gdansk', 'warsaw', 'regensburg'
-    ]
-    if any(kw in loc for kw in european_keywords):
-        return 1
-    # Check remote
-    if 'remote' in loc:
-        return 2
-    return 3
+
+def compute_skills_score(job_skills_raw, resume_skills_union):
+    """
+    Returns the % of a job's required skills that are covered by the union
+    of all resume skills. Returns None if the job has no extracted skills.
+    """
+    if isinstance(job_skills_raw, list):
+        job_skills = job_skills_raw
+    else:
+        try:
+            job_skills = json.loads(job_skills_raw) if job_skills_raw else []
+        except Exception:
+            job_skills = []
+
+    if not job_skills:
+        return None
+
+    job_set    = {s.lower() for s in job_skills}
+    resume_set = {s.lower() for s in resume_skills_union}
+    return (len(job_set & resume_set) / len(job_set)) * 100
+
 
 def is_job_within_retention(job_posted_date, job_scraped_at, retention_days):
     now = datetime.utcnow()
@@ -73,7 +70,7 @@ def is_job_within_retention(job_posted_date, job_scraped_at, retention_days):
         if days_match:
             days_ago = int(days_match.group(1))
             return days_ago <= retention_days
- 
+
         weeks_match = re.search(r'(\d+)\+?\s+weeks?\s+(ago|back)', lowercase_posted)
         if weeks_match:
             weeks_ago = int(weeks_match.group(1))
@@ -120,6 +117,8 @@ def run_match_cycle():
             match_for_user_internal(user)
         except Exception as e:
             print(f"Error matching for user {user['email']}: {e}")
+            import traceback
+            traceback.print_exc()
 
     print("=== Python Match cycle complete ===")
 
@@ -143,10 +142,8 @@ def match_for_user(email):
 
 def match_for_user_internal(user):
     email = user['email']
-    resume_vector = np.frombuffer(user['resume_vector'], dtype=np.float32)
     selected_companies = json.loads(user['selected_companies'] or '[]')
-    resume_skills = json.loads(user.get('resume_skills') or '[]')
-    
+
     settings = load_settings()
     threshold = settings['matchThreshold']
     retention_days = settings['dataRetentionDays']
@@ -156,6 +153,25 @@ def match_for_user_internal(user):
     conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+
+    # Load all resume rows for this user from user_resumes table
+    cursor.execute("SELECT * FROM user_resumes WHERE email = ?", (email,))
+    resume_rows = [dict(r) for r in cursor.fetchall()]
+
+    if not resume_rows:
+        print(f"No resume vectors in user_resumes for {email} — skipping")
+        conn.close()
+        return
+
+    has_multi = len(resume_rows) > 1
+
+    # Build union of all skills across all resumes
+    resume_skills_union = list({
+        s for row in resume_rows
+        for s in json.loads(row.get('resume_skills') or '[]')
+    })
+
+    print(f"  Loaded {len(resume_rows)} resume(s) | has_multi={has_multi} | skills_union={len(resume_skills_union)}")
 
     if not selected_companies:
         cursor.execute("SELECT name FROM companies WHERE status = 'active'")
@@ -170,7 +186,10 @@ def match_for_user_internal(user):
     jobs = _fetch_eligible_jobs(cursor, selected_companies)
 
     # 2. Calculate matches
-    new_matches = _calculate_matches(jobs, resume_vector, threshold, retention_days, email, cursor)
+    new_matches = _calculate_matches(
+        jobs, resume_rows, has_multi, resume_skills_union,
+        threshold, retention_days, email, cursor
+    )
 
     # 3. Save new matches
     _save_new_matches(cursor, email, new_matches)
@@ -186,7 +205,10 @@ def match_for_user_internal(user):
     print(f"Found {len(all_matches)} matches for user {email}")
 
     # 5. Send notifications
-    _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe, resume_skills=resume_skills)
+    _send_notifications_and_update(
+        cursor, conn, email, all_matches, user_yoe,
+        resume_skills=resume_skills_union
+    )
 
     conn.close()
 
@@ -202,42 +224,70 @@ def _fetch_eligible_jobs(cursor, selected_companies):
     cursor.execute(query, selected_companies)
     return [dict(row) for row in cursor.fetchall()]
 
-def _calculate_matches(jobs, resume_vector, threshold, retention_days, email, cursor):
+def _calculate_matches(jobs, resume_rows, has_multi, resume_skills_union,
+                       threshold, retention_days, email, cursor):
     new_matches = []
+
     for job in jobs:
         if not is_job_within_retention(job['posted_date'], job['scraped_at'], retention_days):
             continue
 
-        score = 0.0
-        if job['title_vector'] and job['description_vector']:
-            title_vec = np.frombuffer(job['title_vector'], dtype=np.float32)
-            desc_vec = np.frombuffer(job['description_vector'], dtype=np.float32)
-            title_score = compute_similarity(resume_vector, title_vec) * 100
-            desc_score = compute_similarity(resume_vector, desc_vec) * 100
-            score = (title_score * 0.5) + (desc_score * 0.5)
-        else:
-            job_vector = np.frombuffer(job['embedding_vector'], dtype=np.float32)
-            score = compute_similarity(resume_vector, job_vector) * 100
+        best_score    = 0.0
+        winning_label = resume_rows[0]['slot_label']
 
-        if score >= threshold:
+        if job['title_vector'] and job['description_vector']:
+            title_vec = np.frombuffer(job['title_vector'],       dtype=np.float32)
+            desc_vec  = np.frombuffer(job['description_vector'], dtype=np.float32)
+
+            skills_score = compute_skills_score(job.get('skills_display'), resume_skills_union)
+
+            for row in resume_rows:
+                r_vec = np.frombuffer(row['resume_vector'], dtype=np.float32)
+                s_vec = np.frombuffer(row['resume_summary_vector'], dtype=np.float32) \
+                        if row.get('resume_summary_vector') else r_vec
+
+                t = compute_similarity(s_vec,  title_vec) * 100
+                d = compute_similarity(r_vec,  desc_vec)  * 100
+
+                if skills_score is not None:
+                    score = (t * 0.25) + (d * 0.55) + (skills_score * 0.20)
+                else:
+                    score = (t * 0.25) + (d * 0.75)
+
+                if score > best_score:
+                    best_score    = score
+                    winning_label = row['slot_label']
+
+        else:
+            # Legacy: single combined embedding vector
+            emb_vec = np.frombuffer(job['embedding_vector'], dtype=np.float32)
+            for row in resume_rows:
+                r_vec = np.frombuffer(row['resume_vector'], dtype=np.float32)
+                score = compute_similarity(r_vec, emb_vec) * 100
+                if score > best_score:
+                    best_score    = score
+                    winning_label = row['slot_label']
+
+        if best_score >= threshold:
             cursor.execute("""
                 SELECT id FROM matched_jobs
                 WHERE email = ? AND company_name = ? AND job_id = ?
             """, (email, job['company_name'], job['job_id']))
-            
+
             if not cursor.fetchone():
-                rounded_score = round(score, 1)
                 new_matches.append({
-                    "job_id": job['job_id'],
-                    "company_name": job['company_name'],
-                    "job_title": job['job_title'],
-                    "location": job['location'],
-                    "apply_url": job['apply_url'],
+                    "job_id":        job['job_id'],
+                    "company_name":  job['company_name'],
+                    "job_title":     job['job_title'],
+                    "location":      job['location'],
+                    "apply_url":     job['apply_url'],
                     "skills_display": job['skills_display'],
-                    "required_yoe": job['required_yoe'],
-                    "match_score": rounded_score,
-                    "posted_date": job['posted_date'],
-                    "expires_at": job['expires_at']
+                    "required_yoe":  job['required_yoe'],
+                    "match_score":   round(best_score, 1),
+                    "posted_date":   job['posted_date'],
+                    "expires_at":    job['expires_at'],
+                    "winning_label": winning_label,
+                    "has_multi":     1 if has_multi else 0,
                 })
     return new_matches
 
@@ -245,13 +295,16 @@ def _save_new_matches(cursor, email, new_matches):
     for job in new_matches:
         cursor.execute("""
             INSERT OR IGNORE INTO matched_jobs
-                (email, job_id, company_name, match_score, job_title, location, apply_url, skills_display, required_yoe, notified, expires_at)
+                (email, job_id, company_name, match_score, job_title, location,
+                 apply_url, skills_display, required_yoe, notified, expires_at,
+                 winning_label, has_multi)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
         """, (
-            email, job['job_id'], job['company_name'], job['match_score'], job['job_title'],
-            job['location'], job['apply_url'], job['skills_display'], job['required_yoe'],
-            job['expires_at']
+            email, job['job_id'], job['company_name'], job['match_score'],
+            job['job_title'], job['location'], job['apply_url'],
+            job['skills_display'], job['required_yoe'], job['expires_at'],
+            job.get('winning_label'), job.get('has_multi', 0)
         ))
 
 def _combine_pending_matches(cursor, email, new_matches, retention_days):
@@ -282,9 +335,8 @@ def _combine_pending_matches(cursor, email, new_matches, retention_days):
             all_matches.append(m)
 
     def sort_key(m):
-        loc = m.get('location', '')
         score = m.get('match_score') or 0.0
-        return (get_location_priority_rank(loc), -score)
+        return -score
 
     all_matches.sort(key=sort_key)
     return all_matches
@@ -306,9 +358,12 @@ def _send_notifications_and_update(cursor, conn, email, all_matches, user_yoe, r
         now_iso = datetime.utcnow().isoformat() + 'Z'
         for m in all_matches:
             cursor.execute("""
-                UPDATE matched_jobs SET notified = notified + 1, notified_at = ?
+                UPDATE matched_jobs SET notified = notified + 1, notified_at = ?,
+                    winning_label = COALESCE(winning_label, ?),
+                    has_multi = COALESCE(has_multi, ?)
                 WHERE email = ? AND company_name = ? AND job_id = ?
-            """, (now_iso, email, m['company_name'], m['job_id']))
+            """, (now_iso, m.get('winning_label'), m.get('has_multi', 0),
+                  email, m['company_name'], m['job_id']))
         
         cursor.execute("UPDATE users SET last_notified_at = ? WHERE email = ?", (now_iso, email))
         conn.commit()

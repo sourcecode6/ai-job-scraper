@@ -119,12 +119,46 @@ def init_db():
         conn.commit()
         current_version = 1
 
+    # Migration v2 — user_resumes table + matched_jobs label columns
+    if current_version == 1:
+        print("Applying migration: Version 2 (user_resumes table)")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_resumes (
+              id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+              email                 TEXT NOT NULL,
+              pdf_filename          TEXT NOT NULL,
+              slot_label            TEXT NOT NULL,
+              pdf_hash              TEXT NOT NULL,
+              resume_vector         BLOB,
+              resume_summary_vector BLOB,
+              resume_skills         TEXT,
+              created_at            TEXT,
+              updated_at            TEXT,
+              UNIQUE(email, pdf_filename)
+            )
+        """)
+
+        # Add winning_label and has_multi to matched_jobs for email display
+        try:
+            cursor.execute("ALTER TABLE matched_jobs ADD COLUMN winning_label TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE matched_jobs ADD COLUMN has_multi INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        cursor.execute("PRAGMA user_version = 2")
+        conn.commit()
+        current_version = 2
+
     # Apply future migrations here
-    # if current_version == 1:
+    # if current_version == 2:
     #     cursor.execute("...")
-    #     cursor.execute("PRAGMA user_version = 2")
+    #     cursor.execute("PRAGMA user_version = 3")
     #     conn.commit()
-    #     current_version = 2
+    #     current_version = 3
 
     # Load initial config
     print("Loading companies config...")

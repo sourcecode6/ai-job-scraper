@@ -1,6 +1,10 @@
 # Issues Resolved / Retrospective
 
 ## Version 11.0 (Code Review & Performance Refactor)
+### 35. Windows Unicode Encoding Crash on Resume Import
+* **Issue**: `import_resume.py` crashed on Windows at the very end of execution when trying to print a `✅` emoji to standard output because the default terminal encoding (`cp1252`) could not map the character.
+* **Resolution**: Replaced the `✅` emoji with standard ASCII text (`Resume import complete.`) in the script's `print` statement to ensure crash-free execution across all Windows terminal environments.
+
 
 ### 34. Embedding Deserialization CPU Bottleneck
 * **Issue**: The application was burning significant CPU cycles deserializing JSON arrays of 384-dimensional floating-point vectors from SQLite `TEXT` columns using `json.loads()`.
